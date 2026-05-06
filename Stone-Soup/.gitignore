@@ -1,0 +1,20 @@
+# General Python
+build/
+dist/
+*.egg-info
+__pycache__/
+
+# Sphinx documentation
+/docs/build/
+/docs/source/auto*
+/docs/source/sg_execution_times.rst
+
+# coverage
+.coverage
+htmlcov/
+
+# pytest
+.pytest_cache/
+
+#Animation plotting example
+docs/examples/plotting/example_animation.gif

@@ -1,0 +1,8 @@
+{
+  "timestamp": "{{NOW}}",
+  "node_id": "{{NODE_ID}}",
+  "task_ack": {
+    "task_id": "{{ULID}}",
+    "task_status": "TASK_STATUS_ACCEPTED"
+  }
+}

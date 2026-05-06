@@ -1,0 +1,41 @@
+services:
+  regression-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      additional_contexts:
+        proto-src: ../SAPIENT-Proto-Files
+        sapient-to-cot: ../sapient-to-cot
+    image: msf-regression-ui:latest
+    container_name: msf-regression-ui
+    # Host network so the container can reach LAN peers (e.g. the Windows
+    # BSI Flex Test Harness) without docker-bridge NAT. This also exposes
+    # the UI directly on host:8080 — no `ports:` mapping needed.
+    network_mode: host
+    environment:
+      # NTP server the UI probes when you click the badge / it auto-checks on
+      # page load. Override per-request with ?server=... on /api/ntp.
+      MSF_NTP_SERVER: "192.168.201.1"
+
+      # NMEA-over-UDP GPS listener. The router (Services → GPS → NMEA
+      # forwarding) should be configured to push NMEA sentences to this
+      # host's IP:MSF_NMEA_PORT. No router credentials needed — push only.
+      MSF_NMEA_BIND: "0.0.0.0"
+      MSF_NMEA_PORT: "8500"
+
+      # TAK Server CoT input (UDP) — used when "Also send to TAK" is ticked
+      # in the UI or when /api/send is called with also_send_to_tak=true.
+      MSF_TAK_HOST: "192.168.201.102"
+      MSF_TAK_PORT: "6969"
+
+      # TAK echo listener — bound by the regression UI to receive CoT that
+      # TAK Server redistributes back to us via a `<static>` subscription
+      # (CoreConfig.xml). Use a port not collided with another listener.
+      MSF_TAK_ECHO_BIND: "0.0.0.0"
+      MSF_TAK_ECHO_PORT: "6970"
+    volumes:
+      # Live-edit templates without rebuilding the image.
+      - ./templates:/app/templates
+      # Persist run transcripts to the host.
+      - ./runs:/app/runs
+    restart: unless-stopped

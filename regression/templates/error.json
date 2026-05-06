@@ -1,0 +1,10 @@
+{
+  "timestamp": "{{NOW}}",
+  "node_id": "{{NODE_ID}}",
+  "error": {
+    "packet": "AQIDBA==",
+    "error_message": [
+      "sample-error_message"
+    ]
+  }
+}

@@ -330,7 +330,7 @@ multi-sensor-fusion/
 ├── edge-node/                       future
 ├── fusion-node/                     future
 ├── gui/                             future
-├── compat-baseline/                 see §13
+├── deprecated/compat-baseline/      original CLI baseline harness (kept for history; superseded by regression/)
 ├── BSI-Flex-335-v2-Test-Harness/    upstream reference (unchanged)
 ├── SAPIENT-Proto-Files/             upstream protos (unchanged)
 ├── Stone-Soup/                      vendored for future fusion node
@@ -371,48 +371,49 @@ flowchart LR
     MW -- "Task / AlertAck" --> EN["Edge Node"]
 ```
 
-## 13. Compatibility baseline against the Windows reference
+## 13. Compatibility verification against the Windows reference
 
-Because the user has a Windows instance, we lock down behavior with baselines
-captured from the reference Windows harness, which we then replay against the
-new Python middleware. Details, scripts, and artifacts live under
-[`compat-baseline/`](compat-baseline/).
+Behavior is locked down by the **regression UI** at
+[`regression/`](regression/) — a Docker-packaged web UI that drives any
+SAPIENT v2 message into a configurable host:port and inspects the wire
+conversation. To verify the middleware is wire-compatible with the Windows
+reference, we point the UI's **Host** field at either:
+
+- the Windows reference (`192.168.201.152:14000`) — the today path
+- the new Python middleware (when it lands) — the same flows just retargeted
 
 ```mermaid
 flowchart LR
-    subgraph Win["Windows VM (dev-time only)"]
-        AsmSim["SapientAsmSimulator"]
-        SDA["SapientDataAgent (SDA)"]
-        DMM["SapientDataAgent (DMM)"]
-        DmmSim["SapientDmmSimulator"]
+    UI["regression UI<br/>(Docker, host networking)"]
+    subgraph Win["Windows reference"]
+        SDA["SapientDataAgent + DmmSim"]
         PG12[("PostgreSQL 12")]
-        AsmSim --> SDA --> DMM --> DmmSim
         SDA --> PG12
-        DMM --> PG12
     end
-
-    Win -.->|pcap, pg_dump, logs| Artifacts["compat-baseline/baselines/"]
-
-    subgraph Linux["Linux dev host"]
-        Replay["replay tool"]
-        NewMW["new Python middleware"]
+    subgraph Linux["new Python middleware (future)"]
+        NewMW["middleware container"]
         PG16[("PostgreSQL 16")]
-        Replay --> NewMW --> PG16
+        NewMW --> PG16
     end
-
-    Artifacts -->|tcp pcap replay| Replay
-    Artifacts -->|expected pg state| Diff["state diff"]
-    PG16 --> Diff
+    TAK["TAK Server"]
+    UI -- "TCP — choose target" --> SDA
+    UI -. "TCP — same flows, new target" .-> NewMW
+    UI -- "CoT fan-out (UDP)" --> TAK
 ```
 
-The baseline is not a runtime dependency — it is a regression harness used
-during development.
+Earlier exploratory CLI tooling that captured wire bytes from the Windows
+harness lived under `compat-baseline/` and has been moved to
+[`deprecated/compat-baseline/`](deprecated/compat-baseline/) — the
+captured `baselines/` artifacts and the validator quirks documented there
+are still useful as historical context. None of it is wired into active
+work; the regression UI replaces it.
 
 ## 14. Roadmap
 
 1. **Iteration 1 — middleware** (current): TCP framer, dispatcher, registry,
-   persister, forwarder, health, Postgres schema, container, compose,
-   compat-baseline scaffolding (this document and the empty folder).
+   persister, forwarder, health, Postgres schema, container, compose.
+   Verification surface is the regression UI — point it at the new
+   middleware once running.
 2. **Iteration 2 — edge node**: a Python edge-node service that registers,
    sends status/detection/alert, accepts tasks. Replaces `SapientAsmSimulator`.
 3. **Iteration 3 — fusion node**: Stone-Soup-based fusion that consumes

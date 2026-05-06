@@ -1,0 +1,10 @@
+{
+  "scenario": "detection",
+  "host": "192.168.201.152",
+  "port": 14000,
+  "start_utc": "2026-05-03T02:29:11.186294+00:00",
+  "end_utc": "2026-05-03T02:29:13.149282+00:00",
+  "status": "ok",
+  "note": null,
+  "git_sha": "f95fbb69e6862cfc383036ca4df96a98dde7c69b"
+}

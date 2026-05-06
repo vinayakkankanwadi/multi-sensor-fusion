@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>msf-regression-ui — SAPIENT BSI Flex 335 v2</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>msf-regression-ui</h1>
+  <span class="sub">Send any templated SAPIENT BSI Flex 335 v2 message</span>
+  <span id="clock-badge" class="badge muted" title="click for clock details">clocks: ?</span>
+</header>
+
+<section class="clocks" id="clocks-panel" hidden>
+  <h2>Clock sync</h2>
+  <table id="clocks-table">
+    <thead><tr><th>Source</th><th>Time (UTC) / fix</th><th>Δ vs reference</th><th>Status</th><th>Detail</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="row">
+    <button id="probe-clocks">Refresh</button>
+    <label class="checkbox">
+      <input id="probe-windows" type="checkbox">
+      <span>Include Windows host (sends a Registration → reads RegistrationAck timestamp)</span>
+    </label>
+    <span id="clocks-status" class="muted small"></span>
+  </div>
+  <p class="muted small">
+    Reference clock is the NTP server when reachable, otherwise the local
+    container/host clock. Δ shows how far each source is from the reference.
+    The Windows time is extracted from the SAPIENT RegistrationAck the harness
+    sends back — no extra service required on the Windows side.
+  </p>
+</section>
+
+<section class="endpoints">
+  <h2>Endpoint</h2>
+  <div class="row">
+    <label>Host <input id="host" type="text" placeholder="192.168.201.152"></label>
+    <label>Port <input id="port" type="number" min="1" max="65535" value="14000"></label>
+    <label>Node UUID <input id="node-id" type="text" placeholder="auto-generated"></label>
+    <button id="new-uuid">New UUID</button>
+    <label class="checkbox" title="Generate a fresh UUID before every Send / Run flow — avoids 'Another ASM is using this ID' errors">
+      <input id="auto-new-uuid" type="checkbox">
+      <span>Auto new UUID per run</span>
+    </label>
+  </div>
+  <div class="row">
+    <label>recv timeout (s) <input id="recv-timeout" type="number" step="0.5" min="0" max="60" value="5"></label>
+    <label>drain after (s)  <input id="drain-after"  type="number" step="0.5" min="0" max="60" value="1"></label>
+    <label class="checkbox">
+      <input id="validate-before" type="checkbox">
+      <span>Validate before send</span>
+    </label>
+    <button id="regenerate">Regenerate templates from .proto</button>
+    <span id="endpoint-status" class="muted"></span>
+  </div>
+  <div class="row">
+    <label class="checkbox" title="Convert each sent SapientMessage to a CoT XML event and UDP-send to the TAK Server">
+      <input id="also-tak" type="checkbox">
+      <span>Also send to TAK</span>
+    </label>
+    <label>TAK host <input id="tak-host" type="text" placeholder="192.168.201.102"></label>
+    <label>TAK port <input id="tak-port" type="number" min="1" max="65535" value="6969"></label>
+    <label class="checkbox" title="Listen for our CoT to be echoed back from TAK Server (requires TAK <static> subscription forwarding to MSF_TAK_ECHO_PORT)">
+      <input id="await-echo" type="checkbox">
+      <span>Await TAK echo</span>
+    </label>
+    <span class="muted small">Echo listens on MSF_TAK_ECHO_PORT (6970). TAK CoreConfig must include <code>&lt;static protocol="udp" address="this-host" port="6970"/&gt;</code></span>
+  </div>
+  <p class="muted">
+    Endpoints + the validate flag are saved in your browser. NTP badge in the header
+    turns yellow if local clock skew > 0.5 s, red above 2 s — the harness rejects
+    skewed timestamps.
+  </p>
+</section>
+
+<main>
+  <aside id="templates">
+    <h2>Templates</h2>
+    <ul id="template-list"></ul>
+    <p class="muted small">
+      Auto-discovered from <code>templates/</code>. Drop a new <code>.json</code>
+      there or click <em>Regenerate</em> to rebuild from the .proto descriptors.
+    </p>
+  </aside>
+
+  <section id="editor-pane">
+    <div class="row mode-tabs">
+      <button id="mode-single" class="tab active">Single message</button>
+      <button id="mode-flow" class="tab">Flow</button>
+      <span id="editor-title" class="muted"></span>
+    </div>
+
+    <div id="single-pane">
+      <textarea id="editor" spellcheck="false" placeholder="Pick a template on the left..."></textarea>
+      <div class="row">
+        <button id="send" disabled>Send</button>
+        <button id="validate-only" disabled>Validate only</button>
+        <button id="reload-template" disabled>Reload from disk</button>
+        <span id="send-status" class="muted"></span>
+      </div>
+      <p class="muted small">
+        Placeholders: <code>{{NOW}}</code>, <code>{{ULID}}</code>, <code>{{NODE_ID}}</code>,
+        <code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code>.
+      </p>
+    </div>
+
+    <div id="flow-pane" hidden>
+      <h3>Flow steps <span class="muted small">(single TCP connection — Registration first if you need ASM-id-aware messages)</span></h3>
+      <table id="flow-table">
+        <thead><tr><th>#</th><th>template</th><th>wait_for</th><th>recv (s)</th><th>drain (s)</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="flow-empty" class="muted small">Click templates in the left sidebar to add steps. Drag-reorder via ↑/↓.</div>
+      <div class="row">
+        <button id="run-flow" disabled>Run flow</button>
+        <button id="clear-flow">Clear</button>
+        <button id="preset-reg-status" class="ghost" title="Add Registration → StatusReport">+ register&amp;status</button>
+        <button id="preset-reg-status-det" class="ghost" title="Add Registration → StatusReport → DetectionReport">+ register&amp;status&amp;detect</button>
+        <span id="flow-status" class="muted"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="results-pane">
+    <h2>Result</h2>
+    <div id="result-summary" class="muted">No run yet.</div>
+    <div id="validation-errors" class="muted small"></div>
+    <pre id="result-transcript"></pre>
+  </section>
+</main>
+
+<footer id="runs-footer">
+  <div class="row runs-bar">
+    <h2>Recent runs</h2>
+    <span class="muted small" id="runs-count"></span>
+    <button id="refresh-runs" class="ghost">Refresh</button>
+  </div>
+  <table id="recent-runs">
+    <thead>
+      <tr><th>time</th><th>template</th><th>sent</th><th>result</th><th>target</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

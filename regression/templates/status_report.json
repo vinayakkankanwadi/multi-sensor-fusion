@@ -1,0 +1,10 @@
+{
+  "timestamp": "{{NOW}}",
+  "node_id": "{{NODE_ID}}",
+  "status_report": {
+    "report_id": "{{ULID}}",
+    "system": "SYSTEM_OK",
+    "info": "INFO_NEW",
+    "mode": "default"
+  }
+}

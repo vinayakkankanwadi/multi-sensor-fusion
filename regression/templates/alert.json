@@ -1,0 +1,9 @@
+{
+  "timestamp": "{{NOW}}",
+  "node_id": "{{NODE_ID}}",
+  "alert": {
+    "alert_id": "{{ULID}}",
+    "ranking": 0.5,
+    "confidence": 0.9
+  }
+}

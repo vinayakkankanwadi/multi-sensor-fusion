@@ -1,0 +1,12 @@
+{
+  "timestamp": "{{NOW}}",
+  "node_id": "{{NODE_ID}}",
+  "detection_report": {
+    "report_id": "{{ULID}}",
+    "object_id": "{{ULID}}",
+    "range_bearing": {
+      "coordinate_system": "RANGE_BEARING_COORDINATE_SYSTEM_DEGREES_M",
+      "datum": "RANGE_BEARING_DATUM_TRUE"
+    }
+  }
+}

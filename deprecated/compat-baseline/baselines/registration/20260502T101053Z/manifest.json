@@ -1,0 +1,10 @@
+{
+  "scenario": "registration",
+  "host": "127.0.0.1",
+  "port": 1,
+  "start_utc": "2026-05-02T10:10:53.659357+00:00",
+  "end_utc": "2026-05-02T10:10:53.661611+00:00",
+  "status": "ok",
+  "note": null,
+  "git_sha": "f95fbb69e6862cfc383036ca4df96a98dde7c69b"
+}

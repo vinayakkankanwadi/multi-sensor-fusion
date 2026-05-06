@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# venvs (ad-hoc)
+.venv/
+.proto_stage/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# regression UI runtime artifacts
+regression/runs/
+regression/sapient_msg/
+
+# generated proto bindings under deprecated/
+deprecated/compat-baseline/edge-sim/sapient_msg/
+deprecated/compat-baseline/edge-sim/.venv/
+
+# tak-server-cot keeps no generated state

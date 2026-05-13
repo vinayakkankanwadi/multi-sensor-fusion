@@ -46,12 +46,17 @@ and `cot-bridge` owns the CoT path.
 
 ### System topology (today)
 
+All three services run with `network_mode: host`, so the inter-service
+hops below are real `localhost` TCP connects (not docker-bridge NAT).
+Ports labelled on edges; ports labelled on the boxes are everything Apex
+listens on, even if only one is wired up by default.
+
 ```mermaid
 flowchart LR
-    subgraph LAN["192.168.201.0/24"]
-        subgraph host["Ubuntu dev host"]
+    subgraph LAN["LAN — 192.168.201.0/24"]
+        subgraph host["Ubuntu dev host (host networking)"]
             UI["msf-ui<br/>FastAPI :8080<br/>(edge node)"]
-            Apex["msf-apex<br/>SAPIENT middleware<br/>Child :5020 · Peer :5001<br/>REST API :8081"]
+            Apex["msf-apex (Apex middleware, Trio)<br/>Child v2 :5020 · v1 :5010 · XML :5000<br/>Peer :5001 · Recorder :5003<br/>Parent in :5004 · REST :8081"]
             CoT["msf-cot-bridge<br/>SAPIENT TCP :5005<br/>→ CoT UDP"]
         end
         Router["192.168.201.1<br/>Teltonika router<br/>NTP · GPS NMEA push"]
@@ -66,16 +71,27 @@ flowchart LR
     UI -- "NTP UDP/123" --> Router
     Router -- "NMEA GPS push UDP/8500" --> UI
 
-    UI -- "SAPIENT v2 TCP /5020<br/>(length-prefix protobuf)" --> Apex
+    UI == "SAPIENT v2 TCP /5020<br/>(length-prefix protobuf)" ==> Apex
     Apex -- "registration_ack / error" --> UI
 
-    Apex -- "SAPIENT Parent forwardAll<br/>TCP /14000" --> Win
+    Apex == "SAPIENT Parent forwardAll<br/>TCP /14000" ==> Win
     Win -- "registration_ack / status / detect" --> Apex
-    Apex -- "SAPIENT Parent forwardAll<br/>TCP /5005" --> CoT
+    Apex == "SAPIENT Parent forwardAll<br/>TCP /5005" ==> CoT
 
-    CoT -- "CoT XML UDP/6969" --> TAK
+    CoT == "CoT XML UDP/6969" ==> TAK
     TAK -- "CoT distribution" --> ATAK
+
+    classDef live fill:#e8f5e9,stroke:#43a047,color:#000;
+    classDef ext  fill:#eceff1,stroke:#90a4ae,color:#000;
+    class UI,Apex,CoT live;
+    class Router,Win,TAK,ATAK,Browser ext;
 ```
+
+**Read it as:** thick (`==>`) arrows are the SAPIENT/CoT data path; thin
+arrows are sidecar / control traffic. The two `Parent forwardAll` edges
+out of Apex fire in parallel — that's how a single Send from the UI ends
+up both on the Windows reference harness and on the TAK map without the
+UI knowing about either endpoint.
 
 ### What's inside the UI container
 
@@ -121,29 +137,52 @@ flowchart TB
 
 ### One Send lifecycle
 
+The key property is that the UI's HTTP response does **not** wait for
+the Parent fan-out. Apex acks the Child connection straight away (or
+synthesises one for messages that don't normally get acked), and the
+forwarded copies to BSI and to `cot-bridge` happen on Apex's Trio
+nursery without blocking the UI.
+
 ```mermaid
 sequenceDiagram
+    autonumber
     participant B as Browser
     participant UI as msf-ui
-    participant A as msf-apex<br/>(:5020 child, :5005 parent out)
+    participant A as msf-apex<br/>(child :5020 + parent-out :5005, :14000)
     participant W as Windows BSI Flex<br/>(:14000)
     participant C as msf-cot-bridge<br/>(:5005)
     participant T as TAK Server<br/>(:6969)
 
-    B->>UI: POST /api/send<br/>(template, host=127.0.0.1, port=5020)
-    UI->>UI: render template<br/>(substitute {{NOW}} {{ULID}} {{GPS_*}} ...)
-    UI->>A: SAPIENT length-prefix protobuf
-    A-->>UI: registration_ack
-    par Parent forwardAll
+    B->>UI: POST /api/send<br/>{ host=127.0.0.1, port=5020, template, … }
+    UI->>UI: render template<br/>(substitute {{NOW}} {{ULID}} {{NODE_ID}} {{GPS_*}})
+    UI->>A: SAPIENT length-prefix protobuf<br/>(over open TCP)
+    A-->>UI: registration_ack (within recv_timeout)
+    UI-->>B: 200 OK + transcript JSON
+
+    Note over A: fan-out continues async on Apex's Trio nursery
+    par Apex Parent forwardAll
         A->>W: SAPIENT forwarded
-        W-->>A: ack / status
+        W-->>A: registration_ack (node_id=71d47fbf…)
+        A->>C: BSI ack forwarded too
+        C-->>C: skipped (no CoT mapping for registration_ack)
     and
         A->>C: SAPIENT forwarded
         C->>C: sapient_to_cot.convert()
-        C->>T: CoT XML (UDP)
+        C->>T: CoT XML (UDP/6969)
     end
-    UI-->>B: transcript
 ```
+
+**Things to know, not visible in the diagram:**
+- The UI's `recv_timeout_s` only waits for the *Child* response from
+  Apex. If you want to see BSI's ack arrive too, use the `Flow` mode and
+  bump the drain — the BSI-originated reply is forwarded back through
+  Apex on the same TCP socket.
+- `cot-bridge` will skip any SAPIENT message it has no CoT mapping for
+  (e.g. `registration_ack`, `error`) and bumps a `skipped_no_mapping`
+  counter — that's expected, not a failure.
+- Apex itself logs a deprecation warning at startup because it still
+  uses `trio.MultiError.catch`; we pin `trio==0.23.1` for that reason.
+  Functional, but a future Python/Trio bump will need upstream patches.
 
 ### Module → spec role map
 

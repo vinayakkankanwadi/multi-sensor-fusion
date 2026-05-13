@@ -1,0 +1,78 @@
+{
+  "logLevel": "INFO",
+  "connections": [
+    {
+      "type": "Child",
+      "port": 5020,
+      "format": "PROTO",
+      "icd_version": "BSI Flex 335 v2.0"
+    },
+    {
+      "type": "Child",
+      "port": 5010,
+      "format": "PROTO",
+      "icd_version": "BSI Flex 335 v1.0"
+    },
+    {
+      "type": "Child",
+      "port": 5000,
+      "format": "XML",
+      "icd_version": "VERSION6"
+    },
+    {
+      "type": "Peer",
+      "port": 5001,
+      "format": "PROTO",
+      "icd_version": "BSI Flex 335 v2.0"
+    },
+    {
+      "type": "Recorder",
+      "port": 5003,
+      "format": "PROTO",
+      "icd_version": "BSI Flex 335 v2.0"
+    },
+    {
+      "type": "Parent",
+      "port": 5004,
+      "forwardAll": true,
+      "format": "PROTO",
+      "icd_version": "BSI Flex 335 v2.0"
+    }
+  ],
+  "elasticConfig": {
+    "enabled": false
+  },
+  "apiConfig": {
+    "host": "0.0.0.0",
+    "port": 8081
+  },
+  "enableTimeSyncAdjustment": false,
+  "messageMaxSizeKb": 1024,
+  "detectionConfidenceFiltering": {
+    "enable": false,
+    "threshold": 0.5,
+    "storeInDatabase": true
+  },
+  "middlewareId": "00000000-0000-4000-8000-000000000abc",
+  "enableMessageConversion": true,
+  "autoAssignSensorIDInRegistration": {
+    "enable": false,
+    "startingID": 1000001
+  },
+  "allowPeerRegistration": true,
+  "sendRegistrationAck": true,
+  "rollover": {
+    "enable": true,
+    "unit": "days",
+    "value": 1
+  },
+  "validationOptions": {
+    "validationTypes": [
+      "mandatory_fields_present",
+      "mandatory_oneof_present",
+      "mandatory_repeated_present",
+      "id_format_valid",
+      "message_timestamp_reasonable"
+    ]
+  }
+}

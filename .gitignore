@@ -26,5 +26,5 @@ deprecated/compat-baseline/edge-sim/sapient_msg/
 deprecated/compat-baseline/edge-sim/.venv/
 deprecated/tak-server-cot/__pycache__/
 
-# sapient (mock) generated bindings (built into image; gitignored)
-sapient/sapient_msg/
+# sapient stub retired to deprecated/; generated bindings stay local
+deprecated/sapient/sapient_msg/

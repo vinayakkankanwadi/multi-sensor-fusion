@@ -5,13 +5,15 @@
 # docker-bridge NAT.
 #
 #   ui          FastAPI UI at http://localhost:8080
-#               (template-driven SAPIENT v2 sender, treated as one edge node)
+#               (template-driven SAPIENT v2 sender, treated as one edge node;
+#                defaults its target to Apex on 127.0.0.1:5020).
 #   apex        Real SAPIENT middleware (Python, Trio-based).
 #               Child ports 5020/5010/5000, Peer 5001, Recorder 5003,
 #               Parent forwardAll 5004, REST API 8081.
-#   sapient     Happy-path Linux SAPIENT stub (Registration → RegistrationAck).
-#               Useful for offline mock-ups; will be retired once Apex covers
-#               every flow.
+#               Outbound Parent forwardAll to cot-bridge (5005) and to the
+#               Windows BSI Flex harness on the LAN if present.
+#   cot-bridge  Standalone SAPIENT → CoT → TAK fan-out. Accepts SAPIENT TCP
+#               on 5005, UDP-sends CoT XML to MSF_TAK_HOST:MSF_TAK_PORT.
 #
 # Run from this directory:
 #   docker compose build
@@ -26,7 +28,6 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         proto-src: ./SAPIENT-Proto-Files
-        sapient-to-cot: ./sapient-to-cot
     image: msf-ui:latest
     container_name: msf-ui
     network_mode: host
@@ -34,10 +35,6 @@ services:
       MSF_NTP_SERVER:      "192.168.201.1"
       MSF_NMEA_BIND:       "0.0.0.0"
       MSF_NMEA_PORT:       "8500"
-      MSF_TAK_HOST:        "192.168.201.222"
-      MSF_TAK_PORT:        "6969"
-      MSF_TAK_ECHO_BIND:   "0.0.0.0"
-      MSF_TAK_ECHO_PORT:   "6970"
     volumes:
       - ./ui/templates:/app/templates
       - ./ui/runs:/app/runs
@@ -55,21 +52,6 @@ services:
     volumes:
       # Live-edit the LAN config without rebuilding the image.
       - ./apex/apex_config.json:/app/apex_config.json:ro
-    restart: unless-stopped
-
-  sapient:
-    build:
-      context: ./sapient
-      dockerfile: Dockerfile
-      additional_contexts:
-        proto-src: ./SAPIENT-Proto-Files
-    image: msf-sapient:latest
-    container_name: msf-sapient
-    network_mode: host
-    environment:
-      MSF_SAPIENT_BIND:    "0.0.0.0"
-      MSF_SAPIENT_PORT:    "14000"
-      MSF_SAPIENT_NODE_ID: "00000000-0000-4000-8000-00000000ffff"
     restart: unless-stopped
 
   cot-bridge:

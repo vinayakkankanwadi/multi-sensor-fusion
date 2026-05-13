@@ -19,14 +19,13 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import clocks, flow, gps, ntp, proto_to_template, runner, tak_bridge, tak_echo, templates_loader, validators
+from . import clocks, flow, gps, ntp, proto_to_template, runner, templates_loader, validators
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -38,13 +37,11 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await gps.start_listener()
-    await tak_echo.start_listener()
     log.info("startup complete")
     try:
         yield
     finally:
         await gps.stop_listener()
-        await tak_echo.stop_listener()
 
 
 app = FastAPI(title="msf-ui",
@@ -58,7 +55,11 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", include_in_schema=False)
 def root() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    # no-cache the shell so cache-busted /static/*?v=… queries are seen
+    # immediately after a UI deploy (otherwise the browser keeps the old
+    # script tag with the old version string).
+    return FileResponse(STATIC_DIR / "index.html",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/health")
@@ -128,13 +129,6 @@ class SendRequest(BaseModel):
     drain_after_s: float = Field(1.0, ge=0.0, le=60.0)
     validate_before_send: bool = Field(False,
         description="If true, run the client-side validator and refuse to send on failure")
-    also_send_to_tak: bool = Field(False,
-        description="If true, also convert to CoT and send to the configured TAK Server")
-    tak_host: str | None = Field(None, description="Override MSF_TAK_HOST")
-    tak_port: int | None = Field(None, description="Override MSF_TAK_PORT")
-    await_tak_echo: bool = Field(False,
-        description="If true and also_send_to_tak is true, wait for our CoT to be echoed back from TAK")
-    tak_echo_timeout_s: float = Field(4.0, ge=0.0, le=30.0)
 
 
 @app.post("/api/send")
@@ -182,16 +176,6 @@ async def api_send(req: SendRequest) -> dict:
     )
     result["validation_errors"] = validation_errors
 
-    if req.also_send_to_tak:
-        if req.await_tak_echo:
-            tak_res = await tak_bridge.fan_out_with_echo(
-                message, host=req.tak_host, port=req.tak_port,
-                echo_timeout_s=req.tak_echo_timeout_s)
-        else:
-            tak_res = tak_bridge.fan_out(message,
-                                         host=req.tak_host, port=req.tak_port)
-        result["tak"] = tak_res.to_dict()
-
     return result
 
 
@@ -212,11 +196,6 @@ class FlowRequest(BaseModel):
     node_id: str
     steps: list[FlowStep]
     validate_before_send: bool = False
-    also_send_to_tak: bool = False
-    tak_host: str | None = None
-    tak_port: int | None = None
-    await_tak_echo: bool = False
-    tak_echo_timeout_s: float = 4.0
 
 
 @app.post("/api/send_flow")
@@ -233,54 +212,16 @@ async def api_send_flow(req: FlowRequest) -> dict:
             gap_before_s=s.gap_before_s,
         ) for s in req.steps
     ]
-    on_sent = None
-    if req.also_send_to_tak:
-        if req.await_tak_echo:
-            async def _on_sent(message):
-                r = await tak_bridge.fan_out_with_echo(
-                    message, host=req.tak_host, port=req.tak_port,
-                    echo_timeout_s=req.tak_echo_timeout_s)
-                return r.to_dict()
-        else:
-            def _on_sent(message):
-                return tak_bridge.fan_out(message,
-                                           host=req.tak_host, port=req.tak_port).to_dict()
-        on_sent = _on_sent
     try:
         return await flow.run_flow(
             host=req.host.strip(), port=req.port, node_id=req.node_id,
             steps=steps, validate_before_send=req.validate_before_send,
-            on_sent=on_sent,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 # --- Runs -------------------------------------------------------------------
-
-def _summarise_tak(steps: list[dict] | None, top_tak: dict | None) -> str:
-    """Compact one-line TAK summary for /api/runs row."""
-    if top_tak:
-        if top_tak.get("sent"):
-            return f"TAK: sent {top_tak.get('bytes_sent')}B {top_tak.get('cot_type', '')}"
-        if top_tak.get("error"):
-            return f"TAK: ERR {top_tak['error']}"
-        if top_tak.get("skipped_reason"):
-            return f"TAK: skip ({top_tak['skipped_reason']})"
-        return ""
-    if not steps:
-        return ""
-    sent = sum(1 for s in steps if (s.get("tak") or {}).get("sent"))
-    skipped = sum(1 for s in steps if (s.get("tak") or {}).get("skipped_reason"))
-    err = sum(1 for s in steps if (s.get("tak") or {}).get("error"))
-    if sent + skipped + err == 0:
-        return ""
-    parts = []
-    if sent:    parts.append(f"{sent}✓")
-    if skipped: parts.append(f"{skipped}skip")
-    if err:     parts.append(f"{err}err")
-    return f"TAK: {' '.join(parts)}"
-
 
 def _summarise_message(msg: dict | None) -> str:
     """Pull the most identifying field from a SapientMessage dict for display."""
@@ -333,7 +274,6 @@ def api_list_runs() -> list[dict]:
                 "sent_summary": _summarise_message((sent or {}).get("message")),
                 "recv_contents": [r.get("content") for r in recvs],
                 "recv_summaries": [_summarise_message(r.get("message")) for r in recvs],
-                "tak_summary": _summarise_tak(data.get("steps"), data.get("tak")),
             })
         except Exception as exc:
             out.append({"run_id": d.name, "error": f"parse: {exc}"})
@@ -363,14 +303,6 @@ async def api_ntp(server: str | None = None, timeout: float = 2.0) -> dict:
 def api_gps() -> dict:
     """Return the latest fix from the NMEA-over-UDP listener."""
     return gps.current_fix().to_dict()
-
-
-@app.get("/api/tak/echo")
-def api_tak_echo() -> dict:
-    """Return TAK echo listener stats + last 20 received CoT UIDs."""
-    if tak_echo.listener is None:
-        return {"error": "echo listener not running"}
-    return tak_echo.listener.stats()
 
 
 @app.get("/api/gps/raw")

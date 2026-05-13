@@ -24,28 +24,40 @@ Language: **Python 3.12+**, asyncio, asyncpg, generated protobuf bindings.
 Single Python runtime across middleware, edge, and fusion (Stone-Soup is
 Python).
 
-## Current state — what's built today (2026-05-13)
+## Current state — what's built today (2026-05-02)
 
-The middleware/edge/fusion/GUI services described later in this doc are still
-**target architecture**. What actually exists and runs is one Docker service,
-[`ui`](ui/docker-compose.yml), which acts as a
-configurable SAPIENT client that talks to whichever endpoint you point it at
-(Windows reference today, future Python middleware tomorrow). It also fans
-out the same messages to TAK Server as Cursor-on-Target so they appear on
-ATAK/WinTAK maps.
+The middleware/edge/fusion/GUI services described later in this doc are
+still **target architecture**, but the live stack now spans three
+loosely-coupled Docker services rather than one. The UI is no longer the
+SAPIENT-talks-to-everything monolith — it is an edge node, and Apex (the
+vendored Python SAPIENT middleware) sits in the middle of the chain.
+
+| Service | Role |
+|---|---|
+| [`ui`](ui/) | FastAPI SPA. Template-driven SAPIENT v2 sender. Treated as one edge node. Default target is Apex on `127.0.0.1:5020`. |
+| [`apex`](apex/) | Vendored [Apex SAPIENT Middleware](Apex-SAPIENT-Middleware/) (Trio/Python). Accepts Child/Peer registrations, forwards outbound to `cot-bridge` and to the Windows BSI Flex harness via Parent `forwardAll`. |
+| [`cot-bridge`](cot-bridge/) | Standalone SAPIENT → CoT → TAK fan-out. Accepts SAPIENT length-prefix protobuf on TCP/5005, UDP-sends CoT XML to TAK Server. |
+
+Everything runs on host networking so containers see each other on
+`localhost`. Earlier versions had the UI doing its own TAK fan-out (and a
+happy-path Linux SAPIENT stub for offline mock-ups) — both have been
+retired into [`deprecated/`](deprecated/) now that Apex covers the flows
+and `cot-bridge` owns the CoT path.
 
 ### System topology (today)
 
 ```mermaid
 flowchart LR
     subgraph LAN["192.168.201.0/24"]
-        subgraph host["Ubuntu dev host (192.168.201.107)"]
-            UI["msf-ui<br/>FastAPI · network_mode: host"]
+        subgraph host["Ubuntu dev host"]
+            UI["msf-ui<br/>FastAPI :8080<br/>(edge node)"]
+            Apex["msf-apex<br/>SAPIENT middleware<br/>Child :5020 · Peer :5001<br/>REST API :8081"]
+            CoT["msf-cot-bridge<br/>SAPIENT TCP :5005<br/>→ CoT UDP"]
         end
         Router["192.168.201.1<br/>Teltonika router<br/>NTP · GPS NMEA push"]
-        Win["192.168.201.152:14000<br/>Windows BSI Flex<br/>Test Harness (SapientDataAgent)"]
-        TAK["192.168.201.102<br/>TAK Server :6969 ingest"]
-        ATAK["ATAK / WinTAK clients<br/>(map display)"]
+        Win["192.168.201.152:14000<br/>Windows BSI Flex<br/>Test Harness (SDA)"]
+        TAK["192.168.201.222<br/>TAK Server :6969 ingest"]
+        ATAK["ATAK / WinTAK clients"]
     end
     Browser["Operator browser<br/>localhost:8080"]
 
@@ -54,15 +66,18 @@ flowchart LR
     UI -- "NTP UDP/123" --> Router
     Router -- "NMEA GPS push UDP/8500" --> UI
 
-    UI -- "SAPIENT v2 TCP /14000<br/>(length-prefixed protobuf)" --> Win
-    Win -- "registration_ack / error" --> UI
+    UI -- "SAPIENT v2 TCP /5020<br/>(length-prefix protobuf)" --> Apex
+    Apex -- "registration_ack / error" --> UI
 
-    UI -- "CoT XML UDP/6969" --> TAK
-    TAK -- "CoT echo UDP/6970<br/>(via &lt;static&gt; subscription)" --> UI
+    Apex -- "SAPIENT Parent forwardAll<br/>TCP /14000" --> Win
+    Win -- "registration_ack / status / detect" --> Apex
+    Apex -- "SAPIENT Parent forwardAll<br/>TCP /5005" --> CoT
+
+    CoT -- "CoT XML UDP/6969" --> TAK
     TAK -- "CoT distribution" --> ATAK
 ```
 
-### What's inside the container
+### What's inside the UI container
 
 ```mermaid
 flowchart TB
@@ -85,13 +100,7 @@ flowchart TB
             Clocks["clocks<br/>aggregate + deltas"]
         end
 
-        subgraph takout["TAK fan-out"]
-            Bridge["tak_bridge<br/>SAPIENT → CoT + UDP send"]
-            Echo["tak_echo<br/>UDP listener (:6970)<br/>UID correlation"]
-        end
-
         Proto["sapient_msg/<br/>(generated proto bindings)"]
-        SapientToCot["sapient_to_cot/<br/>(vendored converter pkg)"]
         Runs["runs/<br/>(per-run transcript JSON)"]
     end
 
@@ -101,63 +110,69 @@ flowchart TB
     Main --> Runner
     Main --> Flow
     Main --> Clocks
-    Main --> Bridge
     Runner --> Framer
     Flow --> Framer
     Templates --> Proto
-    Bridge --> SapientToCot
-    Bridge --> Echo
     Clocks --> NTP
     Clocks --> GPS
     Runner --> Runs
     Flow --> Runs
 ```
 
-### One Send-with-TAK lifecycle
+### One Send lifecycle
 
 ```mermaid
 sequenceDiagram
     participant B as Browser
-    participant UI as ui
+    participant UI as msf-ui
+    participant A as msf-apex<br/>(:5020 child, :5005 parent out)
     participant W as Windows BSI Flex<br/>(:14000)
-    participant T as TAK Server<br/>(:6969 / :6970)
+    participant C as msf-cot-bridge<br/>(:5005)
+    participant T as TAK Server<br/>(:6969)
 
-    B->>UI: POST /api/send<br/>(template, host, port, also_send_to_tak)
+    B->>UI: POST /api/send<br/>(template, host=127.0.0.1, port=5020)
     UI->>UI: render template<br/>(substitute {{NOW}} {{ULID}} {{GPS_*}} ...)
-    UI->>UI: (optional) client-side validate
-    UI->>W: SAPIENT length-prefixed protobuf
-    W-->>UI: registration_ack (or error)
-    UI->>T: CoT XML (UDP)
-    T-->>UI: CoT echo on :6970<br/>(redistribution)
-    UI->>UI: correlate echo UID to sent UID
-    UI-->>B: transcript + tak.echo.matched + age_ms
+    UI->>A: SAPIENT length-prefix protobuf
+    A-->>UI: registration_ack
+    par Parent forwardAll
+        A->>W: SAPIENT forwarded
+        W-->>A: ack / status
+    and
+        A->>C: SAPIENT forwarded
+        C->>C: sapient_to_cot.convert()
+        C->>T: CoT XML (UDP)
+    end
+    UI-->>B: transcript
 ```
 
 ### Module → spec role map
 
 | Spec concept (§ in BSI Flex 335 v2) | Today's module | Future home |
 |---|---|---|
-| Length-prefix framing (§4.2) | `app/framer.py` | middleware |
-| Message wrapper (§4 Table 1) | `app/templates_loader.py` (templates_loader.py) + `app/proto_to_template.py` | middleware |
-| Validation rules (informal) | `app/validators.py` | middleware |
-| ASM-side message generation (§4.5) | `app/runner.py`, `app/flow.py` | edge-node |
-| Edge-node forwarding to fusion | (not implemented; Windows harness today) | middleware |
-| GUI link (§0.4 implementation-specific) | `app/static/` SPA | future `gui` service |
-| Clock sync (§4.1 NTP requirement) | `app/clocks.py`, `app/ntp.py` | OS / chrony layer |
-| GPS source (BSI Flex agnostic) | `app/gps.py` (NMEA listener) | edge-node |
-| SAPIENT → CoT bridge | `app/tak_bridge.py` + `sapient_to_cot/` | middleware fan-out plugin |
-| TAK echo verification | `app/tak_echo.py` | middleware or external monitor |
+| Length-prefix framing (§4.2) | `ui/app/framer.py`, `cot-bridge/app/framer.py` | edge / middleware libs |
+| Message wrapper (§4 Table 1) | `ui/app/templates_loader.py` + `proto_to_template.py` | edge |
+| Validation rules (informal) | `ui/app/validators.py` | edge + middleware |
+| ASM-side message generation (§4.5) | `ui/app/runner.py`, `ui/app/flow.py` | edge-node |
+| SAPIENT middleware (§0.4) | `apex/` (vendored Apex) | this stays |
+| Edge-node forwarding to fusion | Apex `Parent forwardAll` | middleware |
+| GUI link (§0.4 implementation-specific) | `ui/app/static/` SPA | future `gui` service |
+| Clock sync (§4.1 NTP requirement) | `ui/app/clocks.py`, `ui/app/ntp.py` | OS / chrony layer |
+| GPS source (BSI Flex agnostic) | `ui/app/gps.py` (NMEA listener) | edge-node |
+| SAPIENT → CoT bridge | `cot-bridge/` + `sapient-to-cot/` | middleware fan-out plugin |
 
 ### Where this departs from the target
 
-- All responsibilities live in one process. The target splits message
-  handling, persistence, edge, fusion, and GUI into separate containers.
-- LAN endpoints (router, Windows, TAK) are read from env vars, but the env
-  vars themselves are baked into `docker-compose.yml` — see "tightly coupled"
-  observation; the planned mitigation is a `.env` file (current values
-  become defaults in `.env.example`, real values gitignored).
-- No PostgreSQL today. Runs are persisted as JSON files under
-  `ui/runs/`.
+- The target architecture splits message handling, persistence, edge,
+  fusion, and GUI into separate containers. Today we have edge (`ui`),
+  middleware (`apex`), and a CoT fan-out (`cot-bridge`) — but no fusion
+  node, no dedicated GUI service, and Apex's persistence (Elasticsearch)
+  is disabled.
+- LAN endpoints (router, Windows, TAK) are baked into
+  `docker-compose.yml` and `apex/apex_config.json`. The planned mitigation
+  is a `.env` file: current values become defaults in `.env.example`,
+  real values gitignored.
+- No PostgreSQL today. UI runs persist as JSON under `ui/runs/`; Apex's
+  Elasticsearch store is off.
 
 The rest of this document describes the **target** — what we are working
 towards as the middleware/edge/fusion/GUI iterations land.

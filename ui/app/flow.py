@@ -47,8 +47,7 @@ def _utc_iso() -> str:
 async def run_flow(*, host: str, port: int, node_id: str,
                    steps: list[Step],
                    validate_before_send: bool = False,
-                   connect_timeout_s: float = 5.0,
-                   on_sent=None) -> dict:
+                   connect_timeout_s: float = 5.0) -> dict:
     """Open one TCP connection; run the steps in order; return a transcript."""
     if not host:
         raise ValueError("host is required")
@@ -160,14 +159,6 @@ async def run_flow(*, host: str, port: int, node_id: str,
                 overall_error = f"step {idx}: {step_record['error']}"
                 break
             step_record["sent"] = True
-            if on_sent is not None:
-                try:
-                    out = on_sent(message)
-                    if asyncio.iscoroutine(out):
-                        out = await out
-                    step_record["tak"] = out
-                except Exception as exc:
-                    step_record["tak"] = {"sent": False, "error": str(exc)}
 
             # Receive: wait for `wait_for`, OR drain for drain_after_s.
             deadline = time.monotonic() + step.recv_timeout_s

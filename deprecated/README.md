@@ -28,18 +28,28 @@ literal, `StatusReport.mode`, `TaskDefinition.concurrent_tasks`,
 ### `tak-server-cot/`
 
 Standalone Python CLI for sending Cursor-on-Target XML over UDP to a TAK
-Server. Built first, to prove the TAK ingest path worked. Superseded by:
+Server. Built first, to prove the TAK ingest path worked. Superseded by
+the standalone [`../cot-bridge/`](../cot-bridge/) service: SAPIENT TCP in
+(length-prefix protobuf), CoT XML out (UDP). Apex's outbound Parent
+forwardAll connection points at it on 5005.
 
-| Live equivalent | Where |
-|---|---|
-| CoT XML builder | [`../sapient-to-cot/sapient_to_cot/converter.py`](../sapient-to-cot/sapient_to_cot/converter.py) — `_build_cot()` |
-| UDP send to TAK | [`../ui/app/tak_bridge.py`](../ui/app/tak_bridge.py) — `fan_out()` |
-| Manual probe | UI's "Also send to TAK" checkbox or `POST /api/send … also_send_to_tak: true` |
+### `sapient/`
 
-The CoT XML builder was duplicated between the two — `cot.py:build_cot()`
-and `_build_cot()` — and the duplicate was never used by the live stack
-(grep across `ui/`, `sapient/`, `sapient-to-cot/` returns zero imports of
-`tak_server_cot`). Removing was painless.
+Happy-path Linux SAPIENT stub that answered `Registration` with a synthetic
+`RegistrationAck`. Useful for offline mock-ups before Apex was vendored.
+Apex now covers every flow the stub did (and every flow the .NET reference
+does), so the stub is no longer in the compose file. The Dockerfile and
+sources stay here in case we ever want a deterministic offline target.
+
+### `ui-tak/`
+
+The UI's own SAPIENT → CoT → TAK fan-out (`tak_bridge.py`) and TAK-echo
+listener (`tak_echo.py`). When Apex got plumbed in front of the UI, TAK
+fan-out moved to the middleware: Apex Parent forwardAll → `cot-bridge` →
+TAK over UDP. Having the UI also fan out was duplicate work and made
+"which path sent that CoT?" harder to answer, so the UI's TAK code was
+retired here. Restore from history if you ever want an edge to bypass
+the middleware (e.g. middleware down, direct-to-TAK probe).
 
 ## When to delete this folder
 

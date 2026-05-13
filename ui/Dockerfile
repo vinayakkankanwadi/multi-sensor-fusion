@@ -39,9 +39,6 @@ RUN python -m grpc_tools.protoc \
     && touch /app/sapient_msg/__init__.py /app/sapient_msg/bsi_flex_335_v2_0/__init__.py \
     && rm -rf /app/proto-src
 
-# SAPIENT → CoT converter package, baked in alongside the app.
-COPY --from=sapient-to-cot sapient_to_cot /app/sapient_to_cot
-
 # App code + tests (tests baked in so `docker exec ... pytest` works).
 COPY app/ /app/app/
 COPY tests/ /app/tests/

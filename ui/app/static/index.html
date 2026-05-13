@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <header>
@@ -37,8 +37,8 @@
 <section class="endpoints">
   <h2>Endpoint</h2>
   <div class="row">
-    <label>Host <input id="host" type="text" placeholder="192.168.201.152"></label>
-    <label>Port <input id="port" type="number" min="1" max="65535" value="14000"></label>
+    <label>Host <input id="host" type="text" placeholder="127.0.0.1 (Apex)"></label>
+    <label>Port <input id="port" type="number" min="1" max="65535" value="5020"></label>
     <label>Node UUID <input id="node-id" type="text" placeholder="auto-generated"></label>
     <button id="new-uuid">New UUID</button>
     <label class="checkbox" title="Generate a fresh UUID before every Send / Run flow — avoids 'Another ASM is using this ID' errors">
@@ -56,23 +56,11 @@
     <button id="regenerate">Regenerate templates from .proto</button>
     <span id="endpoint-status" class="muted"></span>
   </div>
-  <div class="row">
-    <label class="checkbox" title="Convert each sent SapientMessage to a CoT XML event and UDP-send to the TAK Server">
-      <input id="also-tak" type="checkbox">
-      <span>Also send to TAK</span>
-    </label>
-    <label>TAK host <input id="tak-host" type="text" placeholder="192.168.201.102"></label>
-    <label>TAK port <input id="tak-port" type="number" min="1" max="65535" value="6969"></label>
-    <label class="checkbox" title="Listen for our CoT to be echoed back from TAK Server (requires TAK <static> subscription forwarding to MSF_TAK_ECHO_PORT)">
-      <input id="await-echo" type="checkbox">
-      <span>Await TAK echo</span>
-    </label>
-    <span class="muted small">Echo listens on MSF_TAK_ECHO_PORT (6970). TAK CoreConfig must include <code>&lt;static protocol="udp" address="this-host" port="6970"/&gt;</code></span>
-  </div>
   <p class="muted">
     Endpoints + the validate flag are saved in your browser. NTP badge in the header
     turns yellow if local clock skew > 0.5 s, red above 2 s — the harness rejects
-    skewed timestamps.
+    skewed timestamps. TAK fan-out is handled by Apex (Parent forwardAll → cot-bridge → TAK),
+    so the UI no longer needs its own TAK toggle.
   </p>
 </section>
 
@@ -146,6 +134,6 @@
   </table>
 </footer>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=4"></script>
 </body>
 </html>

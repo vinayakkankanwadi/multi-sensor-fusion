@@ -2,8 +2,10 @@
 
 const $ = (sel) => document.querySelector(sel);
 
-// v3 = renamed from "regression-ui" to "ui"; old keys fall back to defaults.
-const STORE_KEY = "msf_endpoint_v3";
+// v4 = removed UI TAK fan-out + defaults Host:Port to Apex (127.0.0.1:5020).
+//      Bumping the key drops stale endpoints saved from earlier versions
+//      (e.g. 127.0.0.1:14000 from the retired sapient stub).
+const STORE_KEY = "msf_endpoint_v4";
 
 function loadEndpoint() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }
@@ -18,10 +20,6 @@ function saveEndpoint() {
     drain_after_s: Number($("#drain-after").value),
     validate_before_send: $("#validate-before").checked,
     auto_new_uuid: $("#auto-new-uuid").checked,
-    also_send_to_tak: $("#also-tak").checked,
-    tak_host: $("#tak-host").value.trim(),
-    tak_port: Number($("#tak-port").value),
-    await_tak_echo: $("#await-echo").checked,
   };
   localStorage.setItem(STORE_KEY, JSON.stringify(data));
 }
@@ -180,10 +178,6 @@ async function runFlow() {
       port: Number($("#port").value),
       node_id: ensureUUID(),
       validate_before_send: $("#validate-before").checked,
-      also_send_to_tak: $("#also-tak").checked,
-      tak_host: $("#tak-host").value.trim() || null,
-      tak_port: Number($("#tak-port").value) || null,
-      await_tak_echo: $("#await-echo").checked,
       steps: flowSteps.map((s) => ({
         template_name: s.template_name,
         wait_for: s.wait_for || null,
@@ -217,19 +211,12 @@ function showFlowResult(result) {
   const ve = $("#validation-errors");
   ve.innerHTML = "";
   const nrecv = (result.transcript || []).filter((t) => t.direction === "recv").length;
-  const takSent = (result.steps || []).filter((s) => s.tak && s.tak.sent).length;
-  const takSkipped = (result.steps || []).filter((s) => s.tak && !s.tak.sent && s.tak.skipped_reason).length;
-  const takErr = (result.steps || []).filter((s) => s.tak && s.tak.error).length;
   if (result.error) {
     sum.className = "err";
     sum.textContent = `${result.run_id} → flow failed: ${result.error}`;
   } else {
     sum.className = "ok";
     sum.textContent = `${result.run_id} → flow ok, ${result.steps.length} step(s), ${nrecv} reply(ies)`;
-  }
-  // TAK summary in the header line
-  if (takSent + takSkipped + takErr > 0) {
-    sum.textContent += `   ·   TAK: ${takSent} sent, ${takSkipped} skipped, ${takErr} error`;
   }
   // Per-step summary — render defensively even when fields are missing.
   const stepLines = (result.steps || []).map((s, i) => {
@@ -239,20 +226,7 @@ function showFlowResult(result) {
     const matched = s.matched_wait_for || (s.wait_for ? "(timeout)" : "—");
     const skipped = s.skipped ? "  (skipped)" : "";
     const errFlag = s.error ? `  ERR: ${s.error}` : "";
-    let tak = "";
-    if (s.tak) {
-      if (s.tak.sent) {
-        tak = `  TAK→ ${s.tak.bytes_sent}B (${s.tak.cot_type})`;
-        if (s.tak.echo) {
-          tak += s.tak.echo.matched
-            ? `  echo ${s.tak.echo.echo_age_ms}ms ✓`
-            : `  echo: ${s.tak.echo.reason}`;
-        }
-      }
-      else if (s.tak.skipped_reason) tak = `  TAK SKIP: ${s.tak.skipped_reason}`;
-      else if (s.tak.error)        tak = `  TAK ERR: ${s.tak.error}`;
-    }
-    return `step ${idx}  ${tpl.padEnd(18)} recv=${recv}  matched=${matched}${skipped}${tak}${errFlag}`;
+    return `step ${idx}  ${tpl.padEnd(18)} recv=${recv}  matched=${matched}${skipped}${errFlag}`;
   });
   $("#result-transcript").textContent =
     stepLines.join("\n") + "\n\n--- transcript ---\n" +
@@ -294,10 +268,6 @@ function buildSendBody() {
     recv_timeout_s: Number($("#recv-timeout").value),
     drain_after_s: Number($("#drain-after").value),
     validate_before_send: $("#validate-before").checked,
-    also_send_to_tak: $("#also-tak").checked,
-    tak_host: $("#tak-host").value.trim() || null,
-    tak_port: Number($("#tak-port").value) || null,
-    await_tak_echo: $("#await-echo").checked,
   };
 }
 
@@ -415,21 +385,6 @@ function showResult(result) {
     sum.className = "warn";
     sum.textContent = `${result.run_id} → sent ${result.template}, no reply within window`;
   }
-  // TAK fan-out, if any
-  if (result.tak) {
-    const t = result.tak;
-    if (t.sent) {
-      sum.textContent += `   ·   TAK: sent ${t.bytes_sent}B (${t.cot_type}) → ${t.target}`;
-      if (t.echo) {
-        if (t.echo.matched) sum.textContent += `   ·   echoed in ${t.echo.echo_age_ms}ms ✓`;
-        else                sum.textContent += `   ·   echo: ${t.echo.reason}`;
-      }
-    } else if (t.error) {
-      sum.textContent += `   ·   TAK: ERR ${t.error}`;
-    } else {
-      sum.textContent += `   ·   TAK: skipped — ${t.skipped_reason}`;
-    }
-  }
   $("#result-transcript").textContent = JSON.stringify(result.transcript, null, 2);
 }
 
@@ -458,9 +413,6 @@ async function loadRecentRuns() {
         const sum = run.recv_summaries?.[i];
         return `<span class="content">${c}</span>` + (sum ? ` <span class="muted small">${sum}</span>` : "");
       }).join("<br>");
-    }
-    if (run.tak_summary) {
-      resultCell += `<br><span class="muted small">${run.tak_summary}</span>`;
     }
     tr.innerHTML = `
       <td>${time}</td>
@@ -595,17 +547,15 @@ function renderClocksTable(data) {
 
 function init() {
   const saved = loadEndpoint();
-  $("#host").value = saved.host || "";
-  $("#port").value = saved.port || 14000;
+  // Default target is Apex on localhost (5020). Apex fans out to BSI and to
+  // cot-bridge → TAK, so the UI just needs to talk to Apex.
+  $("#host").value = saved.host || "127.0.0.1";
+  $("#port").value = saved.port || 5020;
   $("#node-id").value = saved.node_id || newUUID();
   if (saved.recv_timeout_s != null) $("#recv-timeout").value = saved.recv_timeout_s;
   if (saved.drain_after_s != null) $("#drain-after").value = saved.drain_after_s;
   $("#validate-before").checked = !!saved.validate_before_send;
   $("#auto-new-uuid").checked = saved.auto_new_uuid !== false;  // default ON
-  $("#also-tak").checked = !!saved.also_send_to_tak;
-  $("#await-echo").checked = !!saved.await_tak_echo;
-  if (saved.tak_host) $("#tak-host").value = saved.tak_host;
-  if (saved.tak_port) $("#tak-port").value = saved.tak_port;
 
   $("#new-uuid").addEventListener("click", () => { $("#node-id").value = newUUID(); saveEndpoint(); });
   $("#send").addEventListener("click", sendTemplate);

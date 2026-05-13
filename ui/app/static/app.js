@@ -2,7 +2,8 @@
 
 const $ = (sel) => document.querySelector(sel);
 
-const STORE_KEY = "msf_regression_endpoint_v2";
+// v3 = renamed from "regression-ui" to "ui"; old keys fall back to defaults.
+const STORE_KEY = "msf_endpoint_v3";
 
 function loadEndpoint() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }

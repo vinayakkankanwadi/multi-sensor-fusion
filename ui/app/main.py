@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for the regression UI.
+"""FastAPI entrypoint for the UI.
 
 Endpoints:
   GET  /                              single-page UI
@@ -47,7 +47,7 @@ async def _lifespan(app: FastAPI):
         await tak_echo.stop_listener()
 
 
-app = FastAPI(title="msf-regression-ui",
+app = FastAPI(title="msf-ui",
               version="3",
               description="Send any SAPIENT BSI Flex 335 v2 templated message to a configurable endpoint.",
               lifespan=_lifespan)

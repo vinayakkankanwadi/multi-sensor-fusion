@@ -28,7 +28,7 @@ Python).
 
 The middleware/edge/fusion/GUI services described later in this doc are still
 **target architecture**. What actually exists and runs is one Docker service,
-[`regression-ui`](regression/docker-compose.yml), which acts as a
+[`ui`](ui/docker-compose.yml), which acts as a
 configurable SAPIENT client that talks to whichever endpoint you point it at
 (Windows reference today, future Python middleware tomorrow). It also fans
 out the same messages to TAK Server as Cursor-on-Target so they appear on
@@ -40,7 +40,7 @@ ATAK/WinTAK maps.
 flowchart LR
     subgraph LAN["192.168.201.0/24"]
         subgraph host["Ubuntu dev host (192.168.201.107)"]
-            UI["msf-regression-ui<br/>FastAPI · network_mode: host"]
+            UI["msf-ui<br/>FastAPI · network_mode: host"]
         end
         Router["192.168.201.1<br/>Teltonika router<br/>NTP · GPS NMEA push"]
         Win["192.168.201.152:14000<br/>Windows BSI Flex<br/>Test Harness (SapientDataAgent)"]
@@ -66,7 +66,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph container["msf-regression-ui (one FastAPI process)"]
+    subgraph container["msf-ui (one FastAPI process)"]
         direction TB
         Static["static/<br/>(SPA: HTML + JS)"]
         Main["main.py<br/>FastAPI routes + lifespan"]
@@ -118,7 +118,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant B as Browser
-    participant UI as regression-ui
+    participant UI as ui
     participant W as Windows BSI Flex<br/>(:14000)
     participant T as TAK Server<br/>(:6969 / :6970)
 
@@ -157,7 +157,7 @@ sequenceDiagram
   observation; the planned mitigation is a `.env` file (current values
   become defaults in `.env.example`, real values gitignored).
 - No PostgreSQL today. Runs are persisted as JSON files under
-  `regression/runs/`.
+  `ui/runs/`.
 
 The rest of this document describes the **target** — what we are working
 towards as the middleware/edge/fusion/GUI iterations land.
@@ -470,7 +470,7 @@ multi-sensor-fusion/
 ├── edge-node/                       future
 ├── fusion-node/                     future
 ├── gui/                             future
-├── deprecated/compat-baseline/      original CLI baseline harness (kept for history; superseded by regression/)
+├── deprecated/compat-baseline/      original CLI baseline harness (kept for history; superseded by ui/)
 ├── BSI-Flex-335-v2-Test-Harness/    upstream reference (unchanged)
 ├── SAPIENT-Proto-Files/             upstream protos (unchanged)
 ├── Stone-Soup/                      vendored for future fusion node
@@ -513,8 +513,8 @@ flowchart LR
 
 ## 13. Compatibility verification against the Windows reference
 
-Behavior is locked down by the **regression UI** at
-[`regression/`](regression/) — a Docker-packaged web UI that drives any
+Behavior is locked down by the **msf-ui** at
+[`ui/`](ui/) — a Docker-packaged web UI that drives any
 SAPIENT v2 message into a configurable host:port and inspects the wire
 conversation. To verify the middleware is wire-compatible with the Windows
 reference, we point the UI's **Host** field at either:
@@ -524,7 +524,7 @@ reference, we point the UI's **Host** field at either:
 
 ```mermaid
 flowchart LR
-    UI["regression UI<br/>(Docker, host networking)"]
+    UI["msf-ui<br/>(Docker, host networking)"]
     subgraph Win["Windows reference"]
         SDA["SapientDataAgent + DmmSim"]
         PG12[("PostgreSQL 12")]
@@ -546,13 +546,13 @@ harness lived under `compat-baseline/` and has been moved to
 [`deprecated/compat-baseline/`](deprecated/compat-baseline/) — the
 captured `baselines/` artifacts and the validator quirks documented there
 are still useful as historical context. None of it is wired into active
-work; the regression UI replaces it.
+work; the msf-ui replaces it.
 
 ## 14. Roadmap
 
 1. **Iteration 1 — middleware** (current): TCP framer, dispatcher, registry,
    persister, forwarder, health, Postgres schema, container, compose.
-   Verification surface is the regression UI — point it at the new
+   Verification surface is the msf-ui — point it at the new
    middleware once running.
 2. **Iteration 2 — edge node**: a Python edge-node service that registers,
    sends status/detection/alert, accepts tasks. Replaces `SapientAsmSimulator`.

@@ -46,7 +46,7 @@ COPY --from=sapient-to-cot sapient_to_cot /app/sapient_to_cot
 COPY app/ /app/app/
 COPY tests/ /app/tests/
 
-# pytest as a runtime dep — small, useful for in-container regression runs.
+# pytest as a runtime dep — small, useful for in-container test runs.
 RUN pip install --no-cache-dir 'pytest>=7'
 
 EXPOSE 8080

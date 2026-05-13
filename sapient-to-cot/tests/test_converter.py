@@ -1,7 +1,7 @@
 """Converter tests — exercise each content type with a known input.
 
-The proto bindings under regression/sapient_msg/ are generated at docker
-build time. To run these tests on the host: have the regression container
+The proto bindings under ui/sapient_msg/ are generated at docker
+build time. To run these tests on the host: have the ui container
 running (so the package can be reused), or generate sapient_msg/ first via
 `deprecated/compat-baseline/edge-sim/generate_proto.sh`.
 """

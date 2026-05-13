@@ -1,0 +1,55 @@
+# multi-sensor-fusion — top-level compose.
+#
+# Two services, both on host networking so they can reach the LAN
+# (router, TAK Server, Windows BSI Flex if present) and each other via
+# localhost without docker-bridge NAT.
+#
+#   ui   FastAPI UI at http://localhost:8080
+#                   (template-driven SAPIENT v2 sender + TAK fan-out)
+#   sapient         Linux SAPIENT BSI Flex 335 v2 service in development
+#                   (Registration → RegistrationAck; rest accepted silently)
+#
+# Run from this directory:
+#   docker compose build
+#   docker compose up -d
+#   docker compose down
+
+services:
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      additional_contexts:
+        proto-src: ./SAPIENT-Proto-Files
+        sapient-to-cot: ./sapient-to-cot
+    image: msf-ui:latest
+    container_name: msf-ui
+    network_mode: host
+    environment:
+      MSF_NTP_SERVER:      "192.168.201.1"
+      MSF_NMEA_BIND:       "0.0.0.0"
+      MSF_NMEA_PORT:       "8500"
+      MSF_TAK_HOST:        "192.168.201.222"
+      MSF_TAK_PORT:        "6969"
+      MSF_TAK_ECHO_BIND:   "0.0.0.0"
+      MSF_TAK_ECHO_PORT:   "6970"
+    volumes:
+      - ./ui/templates:/app/templates
+      - ./ui/runs:/app/runs
+    restart: unless-stopped
+
+  sapient:
+    build:
+      context: ./sapient
+      dockerfile: Dockerfile
+      additional_contexts:
+        proto-src: ./SAPIENT-Proto-Files
+    image: msf-sapient:latest
+    container_name: msf-sapient
+    network_mode: host
+    environment:
+      MSF_SAPIENT_BIND:    "0.0.0.0"
+      MSF_SAPIENT_PORT:    "14000"
+      MSF_SAPIENT_NODE_ID: "00000000-0000-4000-8000-00000000ffff"
+    restart: unless-stopped

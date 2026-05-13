@@ -1,8 +1,8 @@
-# msf-regression-ui
+# msf-ui
 
 A Docker-packaged web UI for sending any SAPIENT BSI Flex 335 v2 message
 template to a configurable IP/port and inspecting the wire conversation.
-Used as a regression suite against the Windows reference harness, and
+Used as a regression-test suite against the Windows reference harness, and
 later against the new Python middleware as it comes online.
 
 The whole thing is **template-driven**: adding a new SAPIENT message type
@@ -13,7 +13,7 @@ no Python changes**.
 ## Layout
 
 ```
-regression/
+ui/
 ├── README.md             this file
 ├── Dockerfile            python:3.12-slim + grpc_tools (proto codegen at build time)
 ├── docker-compose.yml    one service, host networking, templates/ + runs/ as volumes
@@ -41,7 +41,7 @@ regression/
 ## Step-by-step: bring it up
 
 ```bash
-cd regression
+cd ui
 docker compose build         # ~30s; bakes proto bindings into the image
 docker compose up -d
 ```
@@ -62,7 +62,7 @@ Open http://localhost:8080 in your browser.
    - `recv` lines: any reply from the harness (typically `registration_ack`,
      or `error` if validation failed).
 7. Recent runs appear at the bottom; click any to re-display its transcript.
-   Run JSON also lands under `regression/runs/<run_id>/result.json` on the host.
+   Run JSON also lands under `ui/runs/<run_id>/result.json` on the host.
 
 ## Step-by-step: edit before sending
 
@@ -78,7 +78,7 @@ SAPIENT v2 .proto descriptors plus a small "validator quirks" table
 (`app/proto_to_template.py`). To rebuild:
 
 ```bash
-docker exec msf-regression-ui python -m app.proto_to_template --out /app/templates
+docker exec msf-ui python -m app.proto_to_template --out /app/templates
 ```
 
 Or click **Regenerate templates from .proto** in the UI top bar.
@@ -106,7 +106,7 @@ JSON-driven workflow can use it.
 
 ## Step-by-step: GPS from the router
 
-If the router exposes a GPS module via the RutOS REST API, the regression UI
+If the router exposes a GPS module via the RutOS REST API, the msf-ui
 can pull the live fix and show it in the Clock-sync panel **and** substitute
 it into templates as `{{GPS_LAT}}`, `{{GPS_LON}}`, `{{GPS_ALT}}` — the same
 way `{{NODE_ID}}` and `{{NOW}}` work.
@@ -161,7 +161,7 @@ machine is more than a couple seconds off.
 ## Step-by-step: add a new message template
 
 ```bash
-cd regression/templates
+cd ui/templates
 cp status_report.json my_new_status.json
 $EDITOR my_new_status.json    # tweak fields, set the right oneof content
 # no need to restart — templates/ is mounted live
@@ -198,7 +198,7 @@ Unit tests live in `tests/` and are baked into the image so they can run
 inside the container without a venv:
 
 ```bash
-docker exec msf-regression-ui pytest /app/tests -q     # 24 passed
+docker exec msf-ui pytest /app/tests -q     # 24 passed
 ```
 
 Coverage:
@@ -253,6 +253,6 @@ mapping is needed. If port 8080 is taken on your host, change the
 |---|---|
 | `connect failed: [Errno 113] No route to host` | The target IP is unreachable. Check it with `ping` from the host (the container shares the host network stack). |
 | `connect failed: [Errno 111] Connection refused` | Target port has no listener. Confirm the harness is running. |
-| Template not appearing in the sidebar | Reload the browser — `/api/templates` is read on each load. If still missing, `docker logs msf-regression-ui` will show JSON parse errors. |
+| Template not appearing in the sidebar | Reload the browser — `/api/templates` is read on each load. If still missing, `docker logs msf-ui` will show JSON parse errors. |
 | `template parse failed: ...` on send | The JSON doesn't match the `SapientMessage` schema. Common cause: invalid enum spelling. |
 | Harness sends back an `error` reply | Validator rejected the message. The error transcript will list the specific FluentValidation failures. See `deprecated/compat-baseline/edge-sim/driver/builders.py` for known-good builders that pass the reference validators. |

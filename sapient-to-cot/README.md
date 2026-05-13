@@ -3,13 +3,13 @@
 A small Python package that turns SAPIENT BSI Flex 335 v2 messages into
 Cursor-on-Target (CoT) XML events. Intended to be reused by:
 
-- the **regression UI** (`regression/`) when "Also send to TAK" is ticked
+- the **msf-ui** (`ui/`) when "Also send to TAK" is ticked
 - the **future Python middleware** (`middleware/`) for transparent TAK fan-out
 - the **future fusion node** (`fusion-node/`) for emitting fused tracks to TAK
 
 The package itself is transport-agnostic — it just produces CoT XML bytes.
 Sending them is the caller's job (see [`tak-server-cot/cot.py`](../tak-server-cot/cot.py)
-for a UDP sender, or `regression/app/tak_bridge.py` for the in-UI fan-out).
+for a UDP sender, or `ui/app/tak_bridge.py` for the in-UI fan-out).
 
 ## Layout
 
@@ -53,16 +53,16 @@ if xml is not None:
 ## Tests
 
 ```bash
-# from the repo root, with the regression venv that has proto bindings
+# from the repo root, with the ui venv that has proto bindings
 deprecated/compat-baseline/edge-sim/.venv/bin/python -m pytest sapient-to-cot/tests -v
 ```
 
 6 tests pass: each content-type mapping plus the "no CoT for unsupported
 content" guard.
 
-## Wired into the regression UI
+## Wired into the msf-ui
 
-In the regression UI's top toolbar, tick **Also send to TAK** to fan-out
+In the msf-ui's top toolbar, tick **Also send to TAK** to fan-out
 every Send / Run flow to the TAK Server simultaneously. TAK host/port
 come from the UI fields (default `192.168.201.102:6969` from
 `MSF_TAK_HOST`/`MSF_TAK_PORT` env vars).

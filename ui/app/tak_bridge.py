@@ -1,4 +1,4 @@
-"""Optional TAK fan-out for the regression UI.
+"""Optional TAK fan-out for the UI.
 
 When the operator ticks "Also send to TAK" in the UI (or POSTs `/api/send`
 with `also_send_to_tak=true`), the same SapientMessage we just put on the

@@ -24,6 +24,146 @@ Language: **Python 3.12+**, asyncio, asyncpg, generated protobuf bindings.
 Single Python runtime across middleware, edge, and fusion (Stone-Soup is
 Python).
 
+## Current state — what's built today (2026-05-13)
+
+The middleware/edge/fusion/GUI services described later in this doc are still
+**target architecture**. What actually exists and runs is one Docker service,
+[`regression-ui`](regression/docker-compose.yml), which acts as a
+configurable SAPIENT client that talks to whichever endpoint you point it at
+(Windows reference today, future Python middleware tomorrow). It also fans
+out the same messages to TAK Server as Cursor-on-Target so they appear on
+ATAK/WinTAK maps.
+
+### System topology (today)
+
+```mermaid
+flowchart LR
+    subgraph LAN["192.168.201.0/24"]
+        subgraph host["Ubuntu dev host (192.168.201.107)"]
+            UI["msf-regression-ui<br/>FastAPI · network_mode: host"]
+        end
+        Router["192.168.201.1<br/>Teltonika router<br/>NTP · GPS NMEA push"]
+        Win["192.168.201.152:14000<br/>Windows BSI Flex<br/>Test Harness (SapientDataAgent)"]
+        TAK["192.168.201.102<br/>TAK Server :6969 ingest"]
+        ATAK["ATAK / WinTAK clients<br/>(map display)"]
+    end
+    Browser["Operator browser<br/>localhost:8080"]
+
+    Browser -- "HTTP / HTML+JS" --> UI
+
+    UI -- "NTP UDP/123" --> Router
+    Router -- "NMEA GPS push UDP/8500" --> UI
+
+    UI -- "SAPIENT v2 TCP /14000<br/>(length-prefixed protobuf)" --> Win
+    Win -- "registration_ack / error" --> UI
+
+    UI -- "CoT XML UDP/6969" --> TAK
+    TAK -- "CoT echo UDP/6970<br/>(via &lt;static&gt; subscription)" --> UI
+    TAK -- "CoT distribution" --> ATAK
+```
+
+### What's inside the container
+
+```mermaid
+flowchart TB
+    subgraph container["msf-regression-ui (one FastAPI process)"]
+        direction TB
+        Static["static/<br/>(SPA: HTML + JS)"]
+        Main["main.py<br/>FastAPI routes + lifespan"]
+
+        subgraph send["SAPIENT send path"]
+            Templates["templates_loader<br/>JSON ↔ protobuf"]
+            Validators["validators<br/>(FluentValidation parity)"]
+            Framer["framer<br/>4-byte LE length prefix"]
+            Runner["runner<br/>single TCP send"]
+            Flow["flow<br/>multi-step TCP over 1 conn"]
+        end
+
+        subgraph clocks["Clock-sync & GPS"]
+            NTP["ntp<br/>UDP v3 client"]
+            GPS["gps<br/>NMEA UDP listener (:8500)"]
+            Clocks["clocks<br/>aggregate + deltas"]
+        end
+
+        subgraph takout["TAK fan-out"]
+            Bridge["tak_bridge<br/>SAPIENT → CoT + UDP send"]
+            Echo["tak_echo<br/>UDP listener (:6970)<br/>UID correlation"]
+        end
+
+        Proto["sapient_msg/<br/>(generated proto bindings)"]
+        SapientToCot["sapient_to_cot/<br/>(vendored converter pkg)"]
+        Runs["runs/<br/>(per-run transcript JSON)"]
+    end
+
+    Static --> Main
+    Main --> Templates
+    Main --> Validators
+    Main --> Runner
+    Main --> Flow
+    Main --> Clocks
+    Main --> Bridge
+    Runner --> Framer
+    Flow --> Framer
+    Templates --> Proto
+    Bridge --> SapientToCot
+    Bridge --> Echo
+    Clocks --> NTP
+    Clocks --> GPS
+    Runner --> Runs
+    Flow --> Runs
+```
+
+### One Send-with-TAK lifecycle
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant UI as regression-ui
+    participant W as Windows BSI Flex<br/>(:14000)
+    participant T as TAK Server<br/>(:6969 / :6970)
+
+    B->>UI: POST /api/send<br/>(template, host, port, also_send_to_tak)
+    UI->>UI: render template<br/>(substitute {{NOW}} {{ULID}} {{GPS_*}} ...)
+    UI->>UI: (optional) client-side validate
+    UI->>W: SAPIENT length-prefixed protobuf
+    W-->>UI: registration_ack (or error)
+    UI->>T: CoT XML (UDP)
+    T-->>UI: CoT echo on :6970<br/>(redistribution)
+    UI->>UI: correlate echo UID to sent UID
+    UI-->>B: transcript + tak.echo.matched + age_ms
+```
+
+### Module → spec role map
+
+| Spec concept (§ in BSI Flex 335 v2) | Today's module | Future home |
+|---|---|---|
+| Length-prefix framing (§4.2) | `app/framer.py` | middleware |
+| Message wrapper (§4 Table 1) | `app/templates_loader.py` (templates_loader.py) + `app/proto_to_template.py` | middleware |
+| Validation rules (informal) | `app/validators.py` | middleware |
+| ASM-side message generation (§4.5) | `app/runner.py`, `app/flow.py` | edge-node |
+| Edge-node forwarding to fusion | (not implemented; Windows harness today) | middleware |
+| GUI link (§0.4 implementation-specific) | `app/static/` SPA | future `gui` service |
+| Clock sync (§4.1 NTP requirement) | `app/clocks.py`, `app/ntp.py` | OS / chrony layer |
+| GPS source (BSI Flex agnostic) | `app/gps.py` (NMEA listener) | edge-node |
+| SAPIENT → CoT bridge | `app/tak_bridge.py` + `sapient_to_cot/` | middleware fan-out plugin |
+| TAK echo verification | `app/tak_echo.py` | middleware or external monitor |
+
+### Where this departs from the target
+
+- All responsibilities live in one process. The target splits message
+  handling, persistence, edge, fusion, and GUI into separate containers.
+- LAN endpoints (router, Windows, TAK) are read from env vars, but the env
+  vars themselves are baked into `docker-compose.yml` — see "tightly coupled"
+  observation; the planned mitigation is a `.env` file (current values
+  become defaults in `.env.example`, real values gitignored).
+- No PostgreSQL today. Runs are persisted as JSON files under
+  `regression/runs/`.
+
+The rest of this document describes the **target** — what we are working
+towards as the middleware/edge/fusion/GUI iterations land.
+
+---
+
 ## 2. Conformance to BSI Flex 335 v2.0
 
 The implementation conforms to the spec sections listed below. Where the

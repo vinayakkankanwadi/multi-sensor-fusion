@@ -8,7 +8,7 @@ Cursor-on-Target (CoT) XML events. Intended to be reused by:
 - the **future fusion node** (`fusion-node/`) for emitting fused tracks to TAK
 
 The package itself is transport-agnostic — it just produces CoT XML bytes.
-Sending them is the caller's job (see [`tak-server-cot/cot.py`](../tak-server-cot/cot.py)
+Sending them is the caller's job (see [`deprecated/tak-server-cot/cot.py`](../deprecated/tak-server-cot/cot.py)
 for a UDP sender, or `ui/app/tak_bridge.py` for the in-UI fan-out).
 
 ## Layout

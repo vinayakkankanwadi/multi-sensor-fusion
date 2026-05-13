@@ -21,8 +21,10 @@ Thumbs.db
 ui/runs/
 ui/sapient_msg/
 
-# generated proto bindings under deprecated/
+# generated proto bindings + venvs under deprecated/
 deprecated/compat-baseline/edge-sim/sapient_msg/
 deprecated/compat-baseline/edge-sim/.venv/
+deprecated/tak-server-cot/__pycache__/
 
-# tak-server-cot keeps no generated state
+# sapient (mock) generated bindings (built into image; gitignored)
+sapient/sapient_msg/

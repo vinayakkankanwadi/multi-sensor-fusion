@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=5">
+<link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
 <header>
@@ -69,12 +69,13 @@
     <ul id="template-list"></ul>
     <div class="row templates-actions">
       <button id="regenerate" title="Rebuild every template under templates/ from the SAPIENT v2 .proto descriptors">Build from .proto</button>
+      <button id="clear-templates" class="ghost" title="Delete every .json under templates/. The sidebar will go empty; click Build from .proto (or drop your own .json) to repopulate.">Clear</button>
       <span id="regenerate-status" class="muted small"></span>
     </div>
     <p class="muted small">
       Auto-discovered from <code>templates/</code>. Drop a new <code>.json</code>
-      there to add one, or click <em>Build from .proto</em> to regenerate the
-      full set from the SAPIENT v2 descriptors.
+      there to add one, click <em>Build from .proto</em> to regenerate the
+      full set, or <em>Clear</em> to wipe them all.
     </p>
   </aside>
 
@@ -129,6 +130,8 @@
     <h2>Recent runs</h2>
     <span class="muted small" id="runs-count"></span>
     <button id="refresh-runs" class="ghost">Refresh</button>
+    <button id="clear-runs" class="ghost" title="Delete every run JSON under runs/. Destructive — the transcripts are the only record.">Clear</button>
+    <span id="clear-runs-status" class="muted small"></span>
   </div>
   <table id="recent-runs">
     <thead>
@@ -138,6 +141,6 @@
   </table>
 </footer>
 
-<script src="/static/app.js?v=5"></script>
+<script src="/static/app.js?v=6"></script>
 </body>
 </html>

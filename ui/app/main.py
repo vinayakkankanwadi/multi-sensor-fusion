@@ -87,6 +87,23 @@ class RegenRequest(BaseModel):
     out_dir: str | None = None
 
 
+@app.delete("/api/templates")
+def api_clear_templates() -> dict:
+    """Delete every .json under templates/. Sidebar goes empty; the user
+    can re-populate via `POST /api/templates/regenerate` (UI "Build from
+    .proto") or by dropping a .json into the mounted templates/ volume."""
+    out_dir = Path(templates_loader.TEMPLATES_DIR)
+    removed: list[str] = []
+    if out_dir.exists():
+        for p in out_dir.glob("*.json"):
+            try:
+                p.unlink()
+                removed.append(p.name)
+            except OSError as exc:
+                log.warning("could not remove %s: %s", p, exc)
+    return {"removed": removed, "count": len(removed)}
+
+
 @app.post("/api/templates/regenerate")
 def api_regenerate_templates(req: RegenRequest | None = None) -> dict:
     out = Path((req.out_dir if req else None) or templates_loader.TEMPLATES_DIR)
@@ -286,6 +303,25 @@ def api_get_run(run_id: str) -> dict:
     if not f.exists():
         raise HTTPException(status_code=404, detail="run not found")
     return json.loads(f.read_text())
+
+
+@app.delete("/api/runs")
+def api_clear_runs() -> dict:
+    """Delete every per-run directory under /app/runs. Destructive — the
+    JSON transcripts are the only record once removed, but they're easy
+    to regenerate by re-running the flow."""
+    import shutil
+    runs_dir = Path("/app/runs")
+    removed: list[str] = []
+    if runs_dir.exists():
+        for d in runs_dir.iterdir():
+            if d.is_dir():
+                try:
+                    shutil.rmtree(d)
+                    removed.append(d.name)
+                except OSError as exc:
+                    log.warning("could not remove %s: %s", d, exc)
+    return {"removed": removed, "count": len(removed)}
 
 
 # --- NTP --------------------------------------------------------------------

@@ -62,9 +62,13 @@ async function loadTemplates() {
     li.addEventListener("click", () => selectTemplate(t.name));
     list.appendChild(li);
   }
-  if (templates.length && !currentTemplate) {
+  if (templates.length === 0) {
+    list.innerHTML = `<li class="muted">No templates. Click <em>Build from .proto</em> or drop a .json into <code>templates/</code>.</li>`;
+    return;
+  }
+  if (!currentTemplate) {
     selectTemplate(templates[0].name);
-  } else if (currentTemplate && templates.find((t) => t.name === currentTemplate)) {
+  } else if (templates.find((t) => t.name === currentTemplate)) {
     selectTemplate(currentTemplate);
   }
 }
@@ -354,6 +358,62 @@ async function regenerateTemplates() {
   }
 }
 
+async function clearTemplates() {
+  if (!confirm("Delete every .json under templates/?\n\nThe sidebar will go empty. Click 'Build from .proto' to regenerate the canonical set, or drop your own .json into the mounted templates/ volume.")) {
+    return;
+  }
+  const status = $("#regenerate-status");
+  status.textContent = "clearing...";
+  $("#clear-templates").disabled = true;
+  try {
+    const r = await fetch("/api/templates", { method: "DELETE" });
+    if (!r.ok) {
+      status.textContent = `clear failed: HTTP ${r.status}`;
+      return;
+    }
+    const data = await r.json();
+    status.textContent = `cleared ${data.count} templates`;
+    currentTemplate = null;
+    $("#editor").value = "";
+    $("#editor-title").textContent = "";
+    $("#validate-only").disabled = true;
+    $("#reload-template").disabled = true;
+    $("#result-summary").textContent = "No run yet.";
+    $("#result-summary").className = "muted";
+    $("#result-transcript").textContent = "";
+    $("#validation-errors").innerHTML = "";
+    await loadTemplates();
+    refreshSendButton();
+  } catch (exc) {
+    status.textContent = `clear failed: ${exc}`;
+  } finally {
+    $("#clear-templates").disabled = false;
+  }
+}
+
+async function clearRuns() {
+  if (!confirm("Delete every run transcript under runs/?\n\nThis is destructive — the JSON files are the only record. (They're easy to regenerate by re-running a flow.)")) {
+    return;
+  }
+  const status = $("#clear-runs-status");
+  status.textContent = "clearing...";
+  $("#clear-runs").disabled = true;
+  try {
+    const r = await fetch("/api/runs", { method: "DELETE" });
+    if (!r.ok) {
+      status.textContent = `clear failed: HTTP ${r.status}`;
+      return;
+    }
+    const data = await r.json();
+    status.textContent = `cleared ${data.count} runs`;
+    await loadRecentRuns();
+  } catch (exc) {
+    status.textContent = `clear failed: ${exc}`;
+  } finally {
+    $("#clear-runs").disabled = false;
+  }
+}
+
 function showError(msg) {
   const sum = $("#result-summary");
   sum.className = "err";
@@ -566,10 +626,12 @@ function init() {
   $("#validate-only").addEventListener("click", validateOnly);
   $("#reload-template").addEventListener("click", reloadFromDisk);
   $("#regenerate").addEventListener("click", regenerateTemplates);
+  $("#clear-templates").addEventListener("click", clearTemplates);
   $("#clock-badge").addEventListener("click", refreshClocks);
   $("#probe-clocks").addEventListener("click", refreshClocks);
   $("#probe-windows").addEventListener("change", refreshClocks);
   $("#refresh-runs")?.addEventListener("click", loadRecentRuns);
+  $("#clear-runs")?.addEventListener("click", clearRuns);
 
   $("#mode-single").addEventListener("click", () => setMode("single"));
   $("#mode-flow").addEventListener("click", () => setMode("flow"));

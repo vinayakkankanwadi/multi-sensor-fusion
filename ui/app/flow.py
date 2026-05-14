@@ -24,7 +24,9 @@ from pathlib import Path
 
 from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
-from . import framer, templates_loader, validators
+from sapient_wire import framer
+
+from . import templates_loader, validators
 
 log = logging.getLogger(__name__)
 RUNS_DIR = Path("/app/runs")

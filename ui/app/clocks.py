@@ -25,7 +25,9 @@ from datetime import datetime, timezone
 
 from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
-from . import framer, ntp, templates_loader
+from sapient_wire import framer
+
+from . import ntp, templates_loader
 
 log = logging.getLogger(__name__)
 

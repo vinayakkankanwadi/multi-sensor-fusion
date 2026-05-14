@@ -16,7 +16,7 @@ from typing import Any
 
 from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
-from . import framer
+from sapient_wire import framer
 from .templates_loader import message_to_dict
 
 log = logging.getLogger(__name__)

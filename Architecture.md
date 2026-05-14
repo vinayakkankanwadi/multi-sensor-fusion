@@ -197,7 +197,7 @@ sequenceDiagram
 | GUI link (§0.4 implementation-specific) | `ui/app/static/` SPA | future `gui` service |
 | Clock sync (§4.1 NTP requirement) | `ui/app/clocks.py`, `ui/app/ntp.py` | OS / chrony layer |
 | GPS source (BSI Flex agnostic) | `ui/app/gps.py` (NMEA listener) | edge-node |
-| SAPIENT → CoT bridge | `cot-bridge/` + `sapient-to-cot/` | middleware fan-out plugin |
+| SAPIENT → CoT bridge | `cot-bridge/` + `libs/sapient-to-cot/` | middleware fan-out plugin |
 
 ### Where this departs from the target
 

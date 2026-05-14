@@ -32,7 +32,7 @@ from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
 import sapient_to_cot
 
-from . import framer
+from sapient_wire import framer
 
 
 logging.basicConfig(level=logging.INFO,

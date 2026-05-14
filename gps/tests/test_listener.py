@@ -1,8 +1,9 @@
-"""NMEA parser tests — exercise the offline decoder without binding UDP."""
+"""NMEA parser + listener tests — exercise the offline decoder without
+binding UDP."""
 
 from __future__ import annotations
 
-from app import gps
+from app import listener as gps
 
 
 def test_checksum_valid():
@@ -52,7 +53,6 @@ def test_parse_rmc_valid_and_invalid_status():
     p = gps.parse_sentence(
         "$GPRMC,123519,V,,,,,,,230394,,*4F"
     )
-    # Voided fix — status V, lat/lon empty
     if p is not None:
         assert p.get("status") == "V"
 
@@ -86,8 +86,6 @@ def test_listener_unknown_sentence_returns_none():
 
 
 def test_parse_gns_multi_gnss_sentence():
-    # Real datagram captured from the Teltonika router (with FRNE01_ prefix
-    # already stripped). Mode AAN = GPS Auto, GLONASS Auto, Galileo None.
     p = gps.parse_sentence(
         "$GNGNS,045948.00,2730.222833,S,15305.547438,E,AAN,17,0.6,32.7,47.0,,*3D"
     )
@@ -98,20 +96,17 @@ def test_parse_gns_multi_gnss_sentence():
     assert p["satellites"] == 17
     assert p["hdop"] == 0.6
     assert p["altitude"] == 32.7
-    # Coordinates: 27°30.222833'S, 153°05.547438'E
     assert abs(p["latitude"] - (-27.503714)) < 1e-5
     assert abs(p["longitude"] - 153.092457) < 1e-5
 
 
 def test_listener_strips_router_prefix_via_protocol_path():
-    # Simulate what _NmeaProtocol.datagram_received does on the wire datagram
-    # with the FRNE01_ prefix.
     payload = (
         b"FRNE01_$GNGNS,045948.00,2730.222833,S,15305.547438,E,AAN,17,0.6,32.7,47.0,,*3D\r\n"
     )
     text = payload.decode("ascii", errors="replace")
     first = text.find("$")
-    assert first > 0          # there IS a prefix
+    assert first > 0
     assert text[:first] == "FRNE01_"
     body = text[first:]
     parsed = gps.parse_sentence(body.strip())

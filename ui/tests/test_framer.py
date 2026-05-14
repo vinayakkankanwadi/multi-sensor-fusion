@@ -7,7 +7,7 @@ import struct
 
 import pytest
 
-from app import framer
+from sapient_wire import framer
 
 
 def test_encode_prepends_4_byte_le_length():

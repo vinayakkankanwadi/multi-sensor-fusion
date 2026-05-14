@@ -2,10 +2,10 @@
 
 const $ = (sel) => document.querySelector(sel);
 
-// v4 = removed UI TAK fan-out + defaults Host:Port to Apex (127.0.0.1:5020).
-//      Bumping the key drops stale endpoints saved from earlier versions
-//      (e.g. 127.0.0.1:14000 from the retired sapient stub).
-const STORE_KEY = "msf_endpoint_v4";
+// v6 = node selection persisted alongside middleware selection. Nothing
+//      uses the selected node yet, but the row pattern matches Middleware
+//      and the choice survives reloads.
+const STORE_KEY = "msf_endpoint_v6";
 
 function loadEndpoint() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }
@@ -13,8 +13,8 @@ function loadEndpoint() {
 }
 function saveEndpoint() {
   const data = {
-    host: $("#host").value.trim(),
-    port: Number($("#port").value),
+    middleware_id: selectedMiddlewareId,
+    node_id_selection: selectedNodeId,
     node_id: $("#node-id").value.trim(),
     recv_timeout_s: Number($("#recv-timeout").value),
     drain_after_s: Number($("#drain-after").value),
@@ -22,6 +22,17 @@ function saveEndpoint() {
     auto_new_uuid: $("#auto-new-uuid").checked,
   };
   localStorage.setItem(STORE_KEY, JSON.stringify(data));
+}
+
+// Middleware registry state, refreshed every MW_REFRESH_MS.
+let middlewareList = [];      // [{id, name, host, port, kind, status, ...}]
+let selectedMiddlewareId = null;
+let selectedNodeId = null;    // nodes are selectable too (cosmetic today)
+const MW_REFRESH_MS = 10000;
+let mwRefreshTimer = null;
+
+function selectedMiddleware() {
+  return middlewareList.find((m) => m.id === selectedMiddlewareId) || null;
 }
 
 function ensureUUID() {
@@ -173,13 +184,18 @@ function renderFlow() {
 
 async function runFlow() {
   if (!flowSteps.length) return;
+  const mw = selectedMiddleware();
+  if (!mw) {
+    $("#flow-status").textContent = "select a middleware first";
+    return;
+  }
   saveEndpoint();
   $("#flow-status").textContent = "running flow...";
   $("#run-flow").disabled = true;
   try {
     const body = {
-      host: $("#host").value.trim(),
-      port: Number($("#port").value),
+      host: mw.host,
+      port: mw.port,
       node_id: ensureUUID(),
       validate_before_send: $("#validate-before").checked,
       steps: flowSteps.map((s) => ({
@@ -238,17 +254,208 @@ function showFlowResult(result) {
 }
 
 function refreshSendButton() {
-  const hostEl = $("#host");
-  const hostOk = hostEl.value.trim().length > 0;
-  hostEl.classList.toggle("missing", !hostOk);
-  // Send needs both a template AND a non-empty host. Validate-only only needs a template.
-  $("#send").disabled = !(currentTemplate && hostOk);
-  $("#send").title = hostOk
-    ? "Send the templated SapientMessage to host:port"
-    : "Set a Host in the top bar before sending";
-  $("#endpoint-status").textContent = hostOk
-    ? ""
-    : "host required before sending";
+  const mw = selectedMiddleware();
+  const hasMw = mw !== null;
+  $("#send").disabled = !(currentTemplate && hasMw);
+  $("#send").title = hasMw
+    ? `Send the templated SapientMessage to ${mw.name} (${mw.host}:${mw.port})`
+    : "Select a middleware above before sending";
+  $("#run-flow").disabled = !(flowSteps.length && hasMw);
+}
+
+// Header toggle: drawer hidden/shown by `hidden` attribute, aria-expanded
+// kept in sync for assistive tech and CSS targeting.
+function toggleDrawer(toggleId, panelId) {
+  return () => {
+    const panel = $("#" + panelId);
+    const btn = $("#" + toggleId);
+    const open = panel.hidden;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+}
+
+// "ok" < "warn" < "fail" < "unknown". Unknown sorts last so an item we
+// haven't observed yet is treated as worse than a known failure (same
+// rule msf-nodes' aggregator uses on the backend).
+const SEV_RANK = { ok: 0, warn: 1, fail: 2, unknown: 3 };
+function worstSeverity(items, getter) {
+  let worst = null;
+  for (const it of items || []) {
+    const sev = getter(it);
+    if (sev == null) continue;
+    if (worst == null || (SEV_RANK[sev] ?? 99) > (SEV_RANK[worst] ?? 99)) {
+      worst = sev;
+    }
+  }
+  return worst;
+}
+function applyToggleSeverity(toggleId, sev) {
+  const btn = $("#" + toggleId);
+  if (!btn) return;
+  btn.classList.remove("status-ok", "status-warn", "status-fail", "status-unknown");
+  if (sev) btn.classList.add(`status-${sev}`);
+}
+
+async function loadMiddlewares() {
+  let payload;
+  try {
+    const r = await fetch("/api/middlewares");
+    payload = r.ok ? await r.json() : { config_error: `HTTP ${r.status}`, middlewares: [] };
+  } catch (exc) {
+    payload = { config_error: String(exc), middlewares: [] };
+  }
+  middlewareList = payload.middlewares || [];
+
+  const status = $("#middleware-status");
+  if (payload.config_error) {
+    status.textContent = `service: ${payload.config_error}`;
+    status.className = "muted small err";
+  } else if (middlewareList.length === 0) {
+    status.textContent = "no middlewares configured";
+    status.className = "muted small";
+  } else {
+    status.textContent = "";
+    status.className = "muted small";
+  }
+
+  if (selectedMiddlewareId && !middlewareList.find((m) => m.id === selectedMiddlewareId)) {
+    selectedMiddlewareId = null;
+  }
+  if (!selectedMiddlewareId && middlewareList.length) {
+    const firstOk = middlewareList.find((m) => m.status && m.status.ok);
+    selectedMiddlewareId = (firstOk || middlewareList[0]).id;
+    saveEndpoint();
+  }
+
+  renderMiddlewareList();
+  refreshSendButton();
+  // Header badge colour: worst across the *probed* middlewares (skip
+  // entries we deliberately don't probe — they'd always be "unknown"
+  // and would drag the badge yellow forever).
+  applyToggleSeverity(
+    "middleware-toggle",
+    worstSeverity(middlewareList.filter((m) => m.probe !== false),
+                  (m) => (m.status || {}).severity)
+  );
+}
+
+function renderMiddlewareList() {
+  const list = $("#middleware-list");
+  // Preserve focus / cursor on the input the user is currently editing,
+  // so the periodic refresh doesn't yank them out mid-type.
+  const active = document.activeElement;
+  const activeId = active && active.dataset ? active.dataset.id : null;
+  const activeField = active && active.dataset ? active.dataset.field : null;
+  const cursor = active && active.selectionStart != null ? active.selectionStart : null;
+
+  list.innerHTML = "";
+  for (const m of middlewareList) {
+    const sev = (m.status && m.status.severity) || "unknown";
+    const row = document.createElement("label");
+    row.className = "middleware-row" + (m.id === selectedMiddlewareId ? " active" : "");
+    row.dataset.id = m.id;
+    const rtt = m.status && m.status.rtt_s != null
+      ? `${Math.round(m.status.rtt_s * 1000)} ms`
+      : "—";
+    const err = m.status && m.status.error ? ` (${m.status.error})` : "";
+    row.title = `${m.kind} · rtt ${rtt}${err}`;
+    row.innerHTML = `
+      <span class="dot status-${sev}" aria-label="status: ${sev}"></span>
+      <input type="radio" name="mw" value="${m.id}"${m.id === selectedMiddlewareId ? " checked" : ""}>
+      <span class="name">${m.name}</span>
+      <input type="text"   class="mw-host" data-id="${m.id}" data-field="host" value="${m.host}" spellcheck="false">
+      <input type="number" class="mw-port" data-id="${m.id}" data-field="port" min="1" max="65535" value="${m.port}">
+    `;
+    list.appendChild(row);
+  }
+
+  // Select on radio click or clicking the row itself (but not the inputs).
+  list.querySelectorAll(".middleware-row").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      if (e.target.matches("input.mw-host, input.mw-port")) return;
+      selectedMiddlewareId = row.dataset.id;
+      saveEndpoint();
+      list.querySelectorAll(".middleware-row").forEach((r) => {
+        r.classList.toggle("active", r.dataset.id === selectedMiddlewareId);
+        const rb = r.querySelector('input[type="radio"]');
+        if (rb) rb.checked = (r.dataset.id === selectedMiddlewareId);
+      });
+      refreshSendButton();
+    });
+  });
+
+  // Persist edits when the user commits (blur or Enter), with light
+  // debounce so they can finish typing first.
+  list.querySelectorAll(".mw-host, .mw-port").forEach((el) => {
+    el.addEventListener("change", () => commitMiddlewareEdit(el));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+    });
+  });
+
+  // Restore the user's editing focus if a refresh fired while they typed.
+  if (activeId && activeField) {
+    const sel = `.middleware-row[data-id="${activeId}"] [data-field="${activeField}"]`;
+    const el = list.querySelector(sel);
+    if (el) {
+      el.focus();
+      if (cursor != null && el.setSelectionRange) {
+        try { el.setSelectionRange(cursor, cursor); } catch {}
+      }
+    }
+  }
+}
+
+async function commitMiddlewareEdit(el) {
+  const id = el.dataset.id;
+  const field = el.dataset.field;
+  const value = el.value.trim();
+  const m = middlewareList.find((x) => x.id === id);
+  if (!m) return;
+
+  let body;
+  if (field === "host") {
+    if (!value || value === m.host) return;
+    body = { host: value };
+  } else if (field === "port") {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 1 || n > 65535 || n === m.port) return;
+    body = { port: n };
+  } else {
+    return;
+  }
+
+  const status = $("#middleware-status");
+  status.textContent = `saving ${field}…`;
+  status.className = "muted small";
+  el.classList.add("saving");
+  try {
+    const r = await fetch(`/api/middlewares/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      status.textContent = `save failed: ${err.detail || r.status}`;
+      status.className = "muted small err";
+      el.value = String(m[field]); // revert on failure
+      return;
+    }
+    const updated = await r.json();
+    // Patch in-place so the next refresh sees current values; reload to
+    // pick up the fresh status from the post-edit re-probe.
+    Object.assign(m, updated);
+    status.textContent = `${m.name}: ${field} updated`;
+    setTimeout(() => loadMiddlewares(), 200);
+  } catch (exc) {
+    status.textContent = `save failed: ${exc}`;
+    status.className = "muted small err";
+    el.value = String(m[field]);
+  } finally {
+    el.classList.remove("saving");
+  }
 }
 
 async function reloadFromDisk() {
@@ -263,9 +470,11 @@ async function reloadFromDisk() {
 }
 
 function buildSendBody() {
+  const mw = selectedMiddleware();
+  if (!mw) throw new Error("select a middleware first");
   return {
-    host: $("#host").value.trim(),
-    port: Number($("#port").value),
+    host: mw.host,
+    port: mw.port,
     node_id: ensureUUID(),
     template_name: currentTemplate,
     raw_json: $("#editor").value,
@@ -492,129 +701,119 @@ async function loadRecentRuns() {
   }
 }
 
-function fmtDelta(d) {
-  if (d == null) return "—";
-  const sign = d >= 0 ? "+" : "";
-  return `${sign}${d.toFixed(3)}s`;
-}
+// Platform-node picker — replaces the old "clocks" panel. msf-nodes
+// composes NTP + GPS health per configured upstream host and we just
+// render the rolled-up dot here. Refresh cadence kept short (10 s) so
+// the dot tracks reality without the user having to refresh.
 
-function severityBadgeClass(sev) {
-  return ({ ok: "ok", warn: "warn", fail: "fail", unknown: "muted" }[sev] || "muted");
-}
+const NODES_REFRESH_MS = 10000;
+let nodeList = [];
+let nodesRefreshTimer = null;
 
-async function refreshClocks() {
-  const badge = $("#clock-badge");
-  badge.textContent = "clocks: …";
-  badge.className = "badge muted";
-  $("#clocks-status").textContent = "probing…";
-
-  const params = new URLSearchParams();
-  const includeWin = $("#probe-windows").checked;
-  if (includeWin) {
-    params.set("include_windows", "true");
-    if ($("#host").value.trim()) params.set("windows_host", $("#host").value.trim());
-    if ($("#port").value)         params.set("windows_port", String(Number($("#port").value)));
-    // Use a DEDICATED probe UUID, not the user's Node UUID — otherwise the
-    // harness sees "Another ASM is using this ID" when subsequent sends use
-    // the same UUID. Stable so the probe doesn't churn registrations.
-    params.set("windows_node_id", "0badc1ce-0000-4000-8000-00000000c10c");
-  }
-
+async function loadNodes() {
+  let payload;
   try {
-    const r = await fetch("/api/clocks?" + params.toString());
-    if (!r.ok) { badge.textContent = `clocks: HTTP ${r.status}`; badge.className = "badge err"; return; }
-    const data = await r.json();
-    renderClocksTable(data);
-    // Header badge: worst severity wins.
-    const sevs = [data.deltas.local_severity, data.deltas.windows_severity];
-    const worst = sevs.includes("fail") ? "fail"
-                : sevs.includes("warn") ? "warn"
-                : sevs.includes("ok")   ? "ok" : "muted";
-    badge.className = `badge ${severityBadgeClass(worst)}`;
-    const ntpDelta = data.deltas.local_minus_ref_s;
-    badge.textContent = `clocks: ${data.ntp.ok ? "ntp " : "no-ntp "}${fmtDelta(ntpDelta)} ${worst}`;
-    badge.title = `reference: ${data.deltas.reference_label}`;
-    $("#clocks-status").textContent = "";
+    const r = await fetch("/api/nodes");
+    payload = r.ok ? await r.json() : { config_error: `HTTP ${r.status}`, nodes: [] };
   } catch (exc) {
-    badge.textContent = `clocks: ${exc}`;
-    badge.className = "badge err";
-    $("#clocks-status").textContent = String(exc);
+    payload = { config_error: String(exc), nodes: [] };
   }
+  nodeList = payload.nodes || [];
+
+  const status = $("#nodes-status");
+  if (payload.config_error) {
+    status.textContent = `service: ${payload.config_error}`;
+    status.className = "muted small err";
+  } else if (nodeList.length === 0) {
+    status.textContent = "no nodes configured";
+    status.className = "muted small";
+  } else {
+    status.textContent = "";
+    status.className = "muted small";
+  }
+
+  renderNodeList();
+  applyToggleSeverity(
+    "nodes-toggle",
+    worstSeverity(nodeList, (n) => n.severity)
+  );
 }
 
-function renderClocksTable(data) {
-  const tbody = $("#clocks-table tbody");
-  tbody.innerHTML = "";
-
-  const rows = [
-    {
-      label: data.ntp.label,
-      time:  data.ntp.ok ? data.ntp.remote_time_iso : `(error: ${data.ntp.error || "?"})`,
-      detail: data.ntp.ok ? `rtt=${(data.ntp.rtt_s || 0).toFixed(3)}s` : "",
-      delta: 0,
-      status: data.ntp.ok ? "reference" : "fail",
-      isRef: true,
-    },
-    {
-      label: data.local.label,
-      time:  data.local.remote_time_iso,
-      detail: "",
-      delta: data.deltas.local_minus_ref_s,
-      status: data.deltas.local_severity,
-    },
-  ];
-  if (data.windows) {
-    rows.push({
-      label: data.windows.label,
-      time:  data.windows.ok ? data.windows.remote_time_iso : `(error: ${data.windows.error || "?"})`,
-      detail: data.windows.ok ? `rtt=${(data.windows.rtt_s || 0).toFixed(3)}s` : "",
-      delta: data.deltas.windows_minus_ref_s,
-      status: data.windows.ok ? data.deltas.windows_severity : "fail",
-    });
-  }
-  if (data.gps) {
-    const g = data.gps;
-    let timeCell, detailCell, statusCell;
-    if (g.ok) {
-      timeCell   = g.timestamp || "—";
-      detailCell = `lat=${g.latitude?.toFixed(7)} lon=${g.longitude?.toFixed(7)} alt=${g.altitude ?? "—"}m sats=${g.satellites ?? "—"}`;
-      statusCell = "ok";
+function nodeTooltip(n) {
+  const lines = [`${n.name} · ${n.host}`];
+  for (const [kind, svc] of Object.entries(n.services || {})) {
+    const sev = svc.severity || "unknown";
+    if (kind === "ntp") {
+      const off = svc.offset_s != null ? ` offset=${(svc.offset_s * 1000).toFixed(0)}ms` : "";
+      const err = svc.error ? ` · ${svc.error}` : "";
+      lines.push(`  ntp: ${sev}${off}${err}`);
+    } else if (kind === "gps") {
+      const sats = svc.satellites != null ? ` sats=${svc.satellites}` : "";
+      const age  = svc.age_s != null ? ` age=${svc.age_s.toFixed(1)}s` : "";
+      const err = svc.error ? ` · ${svc.error}` : "";
+      lines.push(`  gps: ${sev}${sats}${age}${err}`);
     } else {
-      timeCell   = "(no fix)";
-      detailCell = `error: ${g.error || "?"}`;
-      statusCell = "fail";
+      lines.push(`  ${kind}: ${sev}${svc.error ? " · " + svc.error : ""}`);
     }
-    rows.push({
-      label: `GPS (${g.source})`,
-      time:  timeCell,
-      detail: detailCell,
-      delta: null,
-      status: statusCell,
-      noDelta: true,
-    });
+  }
+  return lines.join("\n");
+}
+
+function renderNodeList() {
+  const list = $("#nodes-list");
+  list.innerHTML = "";
+
+  // Default the selection: keep what was saved if still present, else
+  // first-OK, else first. Keeps something always selected once nodes are
+  // configured.
+  if (selectedNodeId && !nodeList.find((n) => n.id === selectedNodeId)) {
+    selectedNodeId = null;
+  }
+  if (!selectedNodeId && nodeList.length) {
+    const firstOk = nodeList.find((n) => n.severity === "ok");
+    selectedNodeId = (firstOk || nodeList[0]).id;
+    saveEndpoint();
   }
 
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    tr.className = severityBadgeClass(row.status);
-    tr.innerHTML = `
-      <td>${row.label}</td>
-      <td>${row.time || "—"}</td>
-      <td>${row.noDelta ? "—" : (row.isRef ? "(reference)" : fmtDelta(row.delta))}</td>
-      <td>${row.status}</td>
-      <td class="detail">${row.detail || ""}</td>
+  for (const n of nodeList) {
+    const sev = n.severity || "unknown";
+    const row = document.createElement("label");
+    row.className = "node-row" + (n.id === selectedNodeId ? " active" : "");
+    row.dataset.id = n.id;
+    row.title = nodeTooltip(n);
+    // Per-service mini-dots so the user can see exactly which sub-service
+    // is unhappy without opening the tooltip.
+    const svcChips = Object.entries(n.services || {}).map(([kind, svc]) => {
+      const subSev = (svc && svc.severity) || "unknown";
+      return `<span class="svc"><span class="dot status-${subSev}"></span>${kind}</span>`;
+    }).join("");
+    row.innerHTML = `
+      <span class="dot status-${sev}" aria-label="overall: ${sev}"></span>
+      <input type="radio" name="node" value="${n.id}"${n.id === selectedNodeId ? " checked" : ""}>
+      <span class="name">${n.name}</span>
+      <code class="host">${n.host}</code>
+      <span class="svcs">${svcChips}</span>
     `;
-    tbody.appendChild(tr);
+    list.appendChild(row);
   }
-  $("#clocks-panel").hidden = false;
+
+  list.querySelectorAll(".node-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      selectedNodeId = row.dataset.id;
+      saveEndpoint();
+      list.querySelectorAll(".node-row").forEach((r) => {
+        r.classList.toggle("active", r.dataset.id === selectedNodeId);
+        const rb = r.querySelector('input[type="radio"]');
+        if (rb) rb.checked = (r.dataset.id === selectedNodeId);
+      });
+    });
+  });
 }
 
 function init() {
   const saved = loadEndpoint();
-  // Default target is Apex on localhost (5020). Apex fans out to BSI and to
-  // cot-bridge → TAK, so the UI just needs to talk to Apex.
-  $("#host").value = saved.host || "127.0.0.1";
-  $("#port").value = saved.port || 5020;
+  selectedMiddlewareId = saved.middleware_id || null;
+  selectedNodeId       = saved.node_id_selection || null;
   $("#node-id").value = saved.node_id || newUUID();
   if (saved.recv_timeout_s != null) $("#recv-timeout").value = saved.recv_timeout_s;
   if (saved.drain_after_s != null) $("#drain-after").value = saved.drain_after_s;
@@ -627,11 +826,14 @@ function init() {
   $("#reload-template").addEventListener("click", reloadFromDisk);
   $("#regenerate").addEventListener("click", regenerateTemplates);
   $("#clear-templates").addEventListener("click", clearTemplates);
-  $("#clock-badge").addEventListener("click", refreshClocks);
-  $("#probe-clocks").addEventListener("click", refreshClocks);
-  $("#probe-windows").addEventListener("change", refreshClocks);
   $("#refresh-runs")?.addEventListener("click", loadRecentRuns);
   $("#clear-runs")?.addEventListener("click", clearRuns);
+
+  // Header toggles for Nodes + Middleware. Click to expand/collapse the
+  // drawer below; the toggle's coloured dot reflects worst-of severity
+  // and stays accurate even while the drawer is closed.
+  $("#nodes-toggle").addEventListener("click", toggleDrawer("nodes-toggle", "nodes-panel"));
+  $("#middleware-toggle").addEventListener("click", toggleDrawer("middleware-toggle", "middleware-panel"));
 
   $("#mode-single").addEventListener("click", () => setMode("single"));
   $("#mode-flow").addEventListener("click", () => setMode("flow"));
@@ -649,18 +851,26 @@ function init() {
     addFlowStep("detection_report");
   });
   renderFlow();
-  ["host","port","node-id","recv-timeout","drain-after"].forEach((id) => {
+  ["node-id","recv-timeout","drain-after"].forEach((id) => {
     $("#" + id).addEventListener("change", saveEndpoint);
   });
   $("#validate-before").addEventListener("change", saveEndpoint);
   $("#auto-new-uuid").addEventListener("change", saveEndpoint);
-  // Live-update Send button as Host is typed.
-  $("#host").addEventListener("input", refreshSendButton);
   refreshSendButton();
 
+  loadMiddlewares();
+  loadNodes();
   loadTemplates();
   loadRecentRuns();
-  refreshClocks();
+
+  if (nodesRefreshTimer) clearInterval(nodesRefreshTimer);
+  nodesRefreshTimer = setInterval(loadNodes, NODES_REFRESH_MS);
+
+  // Periodic middleware refresh — keeps status pills coloured in
+  // without the user having to refresh the page. msf-middlewares
+  // probes on its own cadence; this just pulls the latest results.
+  if (mwRefreshTimer) clearInterval(mwRefreshTimer);
+  mwRefreshTimer = setInterval(loadMiddlewares, MW_REFRESH_MS);
 }
 
 document.addEventListener("DOMContentLoaded", init);

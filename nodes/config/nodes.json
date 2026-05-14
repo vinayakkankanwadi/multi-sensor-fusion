@@ -1,0 +1,9 @@
+[
+  {
+    "id": "router",
+    "name": "Teltonika router",
+    "host": "192.168.201.1",
+    "services": ["ntp", "gps"],
+    "description": "LAN router providing NTP time and GPS NMEA push to the platform. Single source of platform clock + position today."
+  }
+]

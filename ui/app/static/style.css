@@ -9,14 +9,39 @@ header {
   padding: 14px 20px;
   background: #161b22;
   border-bottom: 1px solid #30363d;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 header h1 {
-  display: inline-block;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  margin-right: auto;
 }
-header .sub { margin-left: 12px; color: #8b949e; font-size: 13px; }
+header .sub { color: #8b949e; font-size: 13px; }
+header .status-toggle {
+  border-radius: 14px;
+}
+header .status-toggle[aria-expanded="true"] {
+  background: #1f2937;
+  border-color: #58a6ff;
+  color: #fff;
+}
+
+/* Drawer panels — Nodes & Middleware live here, hidden by default and
+   revealed by the matching header toggle. Keeps the chrome compact when
+   the operator just wants to look at templates / send things. */
+.drawer {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 4px;
+}
+.drawer[hidden] { display: none; }
+.drawer-header { gap: 10px; align-items: center; margin: 0 0 6px; }
+.drawer-header h2 { margin: 0; }
 
 section.endpoints {
   padding: 12px 20px;
@@ -25,29 +50,130 @@ section.endpoints {
 }
 section.endpoints h2 { margin: 0 0 8px; font-size: 14px; color: #8b949e; }
 
-section.clocks {
-  padding: 10px 20px;
+/* Middleware picker (lives in the Middleware drawer) */
+.middleware-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.middleware-row {
+  /* dot · radio · name · host · port */
+  display: grid;
+  grid-template-columns: 16px 20px 140px 1fr 80px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.middleware-row:hover { background: #1f2630; }
+.middleware-row.active {
+  border-color: #58a6ff;
+  background: #1f2937;
+}
+.middleware-row input[type="radio"] { margin: 0; cursor: pointer; }
+.middleware-row .name { font-weight: 500; color: #c9d1d9; }
+.middleware-row input.mw-host,
+.middleware-row input.mw-port {
   background: #0d1117;
-  border-bottom: 1px solid #30363d;
-}
-section.clocks h2 { margin: 0 0 8px; font-size: 14px; color: #8b949e; }
-#clocks-table {
-  border-collapse: collapse;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 2px 6px;
+  font-family: ui-monospace, monospace;
   font-size: 12px;
-  width: 100%;
-  margin-bottom: 8px;
 }
-#clocks-table th, #clocks-table td {
-  text-align: left;
-  padding: 4px 10px;
-  border-bottom: 1px solid #21262d;
+.middleware-row input.saving { border-color: #d29922; }
+.middleware-row .dot,
+.node-row > .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #6e7681;
+  justify-self: center;
 }
-#clocks-table th { color: #8b949e; font-weight: 500; }
-#clocks-table tr.ok    td { color: #c9d1d9; }
-#clocks-table tr.warn  td { color: #d29922; }
-#clocks-table tr.fail  td { color: #f85149; }
-#clocks-table tr.muted td { color: #8b949e; }
+.dot.status-ok      { background: #3fb950; }
+.dot.status-warn    { background: #d29922; }
+.dot.status-fail    { background: #f85149; }
+.dot.status-unknown { background: #6e7681; }
+.status-ok   { color: #3fb950; }
+.status-warn { color: #d29922; }
+.status-fail { color: #f85149; }
+
+/* Header — small "clocks" button doubles as a status indicator: a tiny
+   coloured dot before the word reflects the worst severity. */
+header h1 { font-size: 18px; margin: 0; }
+button.ghost.small {
+  font-size: 11px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+button.ghost.small::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6e7681;
+  display: inline-block;
+}
+button.ghost.small.status-ok::before   { background: #3fb950; }
+button.ghost.small.status-warn::before { background: #d29922; }
+button.ghost.small.status-fail::before { background: #f85149; }
+
+/* Nodes section (lives in the Nodes drawer). One row per upstream host
+   (router today, drones / external GNSS sources tomorrow). Each row
+   shows the rolled-up severity dot plus per-service sub-dots so an
+   operator can see which sub-service is unhappy at a glance. */
+.nodes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.node-row {
+  /* dot · radio · name · host · service chips */
+  display: grid;
+  grid-template-columns: 16px 20px 140px 140px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.node-row:hover { background: #1f2630; }
+.node-row.active {
+  border-color: #58a6ff;
+  background: #1f2937;
+}
+.node-row input[type="radio"] { margin: 0; cursor: pointer; }
+.node-row .name { color: #c9d1d9; font-weight: 500; }
+.node-row .host {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #8b949e;
+  background: transparent;
+}
+.node-row .svcs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: #8b949e;
+}
+.node-row .svc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.node-row .svc .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 .row {
   display: flex;
   gap: 12px;
@@ -224,8 +350,6 @@ section h3 { margin-top: 16px; }
 #recent-runs tr.err td { color: #f85149; }
 #recent-runs tr:hover td { background: #161b22; cursor: pointer; }
 #recent-runs .content { color: #d2a8ff; }
-
-#clocks-table .detail { color: #8b949e; font-size: 11px; }
 
 .mode-tabs { gap: 4px; margin-bottom: 6px; }
 button.tab {

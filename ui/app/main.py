@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import urllib.error
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -25,7 +26,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import clocks, flow, gps, ntp, proto_to_template, runner, templates_loader, validators
+from . import clocks, flow, gps, middlewares, nodes, ntp, proto_to_template, runner, templates_loader, validators
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -331,6 +332,42 @@ async def api_ntp(server: str | None = None, timeout: float = 2.0) -> dict:
     srv = server or os.environ.get("MSF_NTP_SERVER", ntp.DEFAULT_SERVER)
     result = await ntp.query(server=srv, timeout=timeout)
     return result.to_dict()
+
+
+# --- Nodes ------------------------------------------------------------------
+
+@app.get("/api/nodes")
+async def api_nodes() -> dict:
+    """Platform-node registry + per-service status. Proxy through to
+    msf-nodes, which aggregates from msf-ntp + msf-gps."""
+    return await nodes.fetch_current()
+
+
+# --- Middlewares ------------------------------------------------------------
+
+@app.get("/api/middlewares")
+async def api_middlewares() -> dict:
+    """Proxy through to msf-middlewares — list of configured middlewares +
+    their current statuses. The UI picker reads this on load and on
+    periodic refresh."""
+    return await middlewares.fetch_current()
+
+
+class MiddlewarePatch(BaseModel):
+    host: str | None = Field(None, min_length=1, max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+
+
+@app.patch("/api/middlewares/{mw_id}")
+async def api_patch_middleware(mw_id: str, req: MiddlewarePatch) -> dict:
+    """Persist edits to the named middleware's host/port. The middlewares
+    service rewrites its mounted JSON config and re-probes immediately."""
+    try:
+        return await middlewares.patch_one(mw_id, host=req.host, port=req.port)
+    except urllib.error.HTTPError as exc:  # type: ignore[name-defined]
+        raise HTTPException(status_code=exc.code, detail=exc.read().decode())
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"middlewares service: {exc}")
 
 
 # --- GPS --------------------------------------------------------------------

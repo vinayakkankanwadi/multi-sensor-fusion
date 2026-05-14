@@ -89,8 +89,7 @@
       "mandatory_fields_present",
       "mandatory_oneof_present",
       "mandatory_repeated_present",
-      "id_format_valid",
-      "message_timestamp_reasonable"
+      "id_format_valid"
     ]
   }
 }

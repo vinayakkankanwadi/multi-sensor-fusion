@@ -1,0 +1,20 @@
+[
+  {
+    "id": "apex-local",
+    "name": "Apex Local",
+    "host": "127.0.0.1",
+    "port": 5020,
+    "kind": "apex",
+    "probe": true,
+    "description": "Vendored Apex middleware on localhost (Child v2 :5020). Default target for the UI."
+  },
+  {
+    "id": "bsi-windows",
+    "name": "BSI Windows",
+    "host": "192.168.201.152",
+    "port": 14000,
+    "kind": "windows",
+    "probe": false,
+    "description": "Windows BSI Flex 335 v2 reference harness (SapientDataAgent). Probing is disabled because the harness logs each bare-TCP probe as a receiver error — selecting and sending is still fully functional."
+  }
+]

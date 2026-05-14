@@ -4,10 +4,7 @@
     "type": "platform-node",
     "name": "Teltonika router",
     "host": "192.168.201.1",
-    "services": [
-      "ntp",
-      "gps"
-    ],
+    "services": ["ntp", "gps"],
     "description": "LAN router providing NTP time and GPS NMEA push to the platform."
   },
   {
@@ -28,6 +25,60 @@
     "host": "192.168.201.152",
     "port": 14000,
     "probe": false,
-    "description": "Windows BSI Flex 335 v2 reference harness. Probing disabled because the harness logs each bare-TCP probe as a receiver error \u2014 selecting and sending is still fully functional."
+    "description": "Windows BSI Flex 335 v2 reference harness. Probing disabled because the harness logs each bare-TCP probe as a receiver error — selecting and sending is still fully functional."
+  },
+  {
+    "id": "ui",
+    "type": "service",
+    "name": "msf-ui",
+    "host": "127.0.0.1",
+    "port": 8080,
+    "health_path": "/api/health",
+    "description": "FastAPI UI / template-driven SAPIENT sender. Self-probe; if it's red the UI itself is down (you wouldn't see this drawer)."
+  },
+  {
+    "id": "gps",
+    "type": "service",
+    "name": "msf-gps",
+    "host": "127.0.0.1",
+    "port": 8090,
+    "health_path": "/health",
+    "description": "NMEA-over-UDP aggregator. Owns UDP/8500 and exposes /gps/current."
+  },
+  {
+    "id": "ntp",
+    "type": "service",
+    "name": "msf-ntp",
+    "host": "127.0.0.1",
+    "port": 8091,
+    "health_path": "/health",
+    "description": "Multi-source NTP probe. Polls every server in MSF_NTP_SERVERS and exposes the voted offset."
+  },
+  {
+    "id": "nodes-self",
+    "type": "service",
+    "name": "msf-nodes",
+    "host": "127.0.0.1",
+    "port": 8093,
+    "health_path": "/health",
+    "description": "This service. The unified registry + status aggregator for every named platform resource."
+  },
+  {
+    "id": "apex-rest",
+    "type": "service",
+    "name": "msf-apex (REST)",
+    "host": "127.0.0.1",
+    "port": 8081,
+    "health_path": "/",
+    "description": "Vendored Apex middleware's REST API. Probing the REST surface tells us the container is running and Apex's HTTP layer is up; the SAPIENT-protocol side is observed separately via the apex-local middleware entry."
+  },
+  {
+    "id": "cot-bridge",
+    "type": "service",
+    "name": "msf-cot-bridge",
+    "host": "127.0.0.1",
+    "port": 5005,
+    "probe_kind": "tcp",
+    "description": "SAPIENT → CoT → TAK fan-out. No HTTP surface; we TCP-probe the SAPIENT inbound port to confirm the container is listening."
   }
 ]

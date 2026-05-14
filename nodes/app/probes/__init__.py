@@ -15,12 +15,14 @@ from typing import Awaitable, Callable
 
 from . import middleware as _middleware
 from . import platform_node as _platform_node
+from . import service as _service
 
 ProbeFn = Callable[[dict, dict], "Awaitable[dict]"]
 
 REGISTRY: dict[str, ProbeFn] = {
     "platform-node": _platform_node.probe,
     "middleware":    _middleware.probe,
+    "service":       _service.probe,
 }
 
 

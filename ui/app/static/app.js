@@ -722,6 +722,62 @@ const NODES_REFRESH_MS = 10000;
 let nodeList = [];
 let nodesRefreshTimer = null;
 
+// Services drawer state (the containers we spin: ui, gps, ntp, nodes,
+// apex, cot-bridge). Filtered view of the same /api/nodes endpoint;
+// status drives the header badge so a glance at the top of every page
+// tells you whether the stack is healthy.
+let serviceList = [];
+
+async function loadServices() {
+  let payload;
+  try {
+    const r = await fetch("/api/nodes?type=service");
+    payload = r.ok ? await r.json() : { config_error: `HTTP ${r.status}`, nodes: [] };
+  } catch (exc) {
+    payload = { config_error: String(exc), nodes: [] };
+  }
+  serviceList = payload.nodes || [];
+
+  const status = $("#services-status");
+  if (payload.config_error) {
+    status.textContent = `service: ${payload.config_error}`;
+    status.className = "muted small err";
+  } else if (serviceList.length === 0) {
+    status.textContent = "no services configured";
+    status.className = "muted small";
+  } else {
+    status.textContent = "";
+    status.className = "muted small";
+  }
+
+  renderServiceList();
+  applyToggleSeverity(
+    "services-toggle",
+    worstSeverity(serviceList, (n) => n.severity)
+  );
+}
+
+function renderServiceList() {
+  const list = $("#services-list");
+  list.innerHTML = "";
+  for (const s of serviceList) {
+    const sev = s.severity || "unknown";
+    const row = document.createElement("div");
+    row.className = "service-row";
+    const st = s.status || {};
+    const rtt = st.rtt_s != null ? `${Math.round(st.rtt_s * 1000)} ms` : "—";
+    const err = st.error ? ` · ${st.error}` : "";
+    row.title = `${s.name}\n${s.host}:${s.port} (${s.probe_kind || "—"})\nrtt ${rtt}${err}`;
+    row.innerHTML = `
+      <span class="dot status-${sev}" aria-label="overall: ${sev}"></span>
+      <span class="name">${s.name}</span>
+      <code class="host">${s.host}:${s.port}</code>
+      <span class="kind muted small">${s.probe_kind || "—"}</span>
+    `;
+    list.appendChild(row);
+  }
+}
+
 async function loadNodes() {
   let payload;
   try {
@@ -844,12 +900,14 @@ function init() {
   $("#refresh-runs")?.addEventListener("click", loadRecentRuns);
   $("#clear-runs")?.addEventListener("click", clearRuns);
 
-  // Header toggles for Nodes / Middleware / Message. Click to expand or
-  // collapse the corresponding drawer; each toggle's coloured dot reflects
-  // worst-of severity (Nodes/Middleware) or last-run status (Message),
-  // and stays accurate even while the drawer is closed.
+  // Header toggles for Nodes / Middleware / Services / Message. Click to
+  // expand or collapse the corresponding drawer; each toggle's coloured
+  // dot reflects worst-of severity (Nodes / Middleware / Services) or
+  // last-run status (Message), and stays accurate even while the drawer
+  // is closed — at-a-glance "is the stack healthy" indicator.
   $("#nodes-toggle").addEventListener("click", toggleDrawer("nodes-toggle", "nodes-panel"));
   $("#middleware-toggle").addEventListener("click", toggleDrawer("middleware-toggle", "middleware-panel"));
+  $("#services-toggle").addEventListener("click", toggleDrawer("services-toggle", "services-panel"));
   $("#message-toggle").addEventListener("click", toggleDrawer("message-toggle", "message-panel"));
 
   $("#mode-single").addEventListener("click", () => setMode("single"));
@@ -877,11 +935,15 @@ function init() {
 
   loadMiddlewares();
   loadNodes();
+  loadServices();
   loadTemplates();
   loadRecentRuns();
 
   if (nodesRefreshTimer) clearInterval(nodesRefreshTimer);
-  nodesRefreshTimer = setInterval(loadNodes, NODES_REFRESH_MS);
+  nodesRefreshTimer = setInterval(() => {
+    loadNodes();
+    loadServices();
+  }, NODES_REFRESH_MS);
 
   // Periodic middleware refresh — keeps status pills coloured in
   // without the user having to refresh the page. msf-middlewares

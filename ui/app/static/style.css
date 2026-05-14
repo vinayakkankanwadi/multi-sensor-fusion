@@ -257,6 +257,42 @@ button.ghost.small.status-fail::before { background: #f85149; }
   height: 8px;
   border-radius: 50%;
 }
+
+/* Services drawer (lives in the Services drawer). Rows are read-only —
+   no radio, no editable inputs — because the containers we spin aren't
+   selectable in the same operator sense as middlewares; this is a status
+   dashboard. */
+.services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.service-row {
+  /* dot · name · host · probe-kind */
+  display: grid;
+  grid-template-columns: 16px 200px 200px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.service-row .name { color: #c9d1d9; font-weight: 500; }
+.service-row .host {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #8b949e;
+  background: transparent;
+}
+.service-row .kind { text-transform: uppercase; }
+.service-row > .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  justify-self: center;
+}
 .row {
   display: flex;
   gap: 12px;

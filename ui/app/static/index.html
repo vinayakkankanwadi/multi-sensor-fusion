@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=17">
+<link rel="stylesheet" href="/static/style.css?v=18">
 </head>
 <body>
 <header>
@@ -15,6 +15,10 @@
   <button id="middleware-toggle" class="ghost small status-toggle" aria-expanded="false"
           title="SAPIENT middleware picker">
     <span class="label">Middleware</span>
+  </button>
+  <button id="services-toggle" class="ghost small status-toggle" aria-expanded="false"
+          title="Internal services we spin (msf-ui, msf-gps, msf-ntp, msf-nodes, msf-apex, msf-cot-bridge)">
+    <span class="label">Services</span>
   </button>
   <button id="message-toggle" class="ghost small status-toggle" aria-expanded="false"
           title="Send a templated SAPIENT message — UUID, templates, editor, result, recent runs">
@@ -36,6 +40,14 @@
     <span id="middleware-status" class="muted small"></span>
   </div>
   <div id="middleware-list" class="middleware-list"></div>
+</section>
+
+<section id="services-panel" class="drawer" hidden>
+  <div class="row drawer-header">
+    <h2>Services</h2>
+    <span id="services-status" class="muted small"></span>
+  </div>
+  <div id="services-list" class="services-list"></div>
 </section>
 
 <section id="message-panel" class="drawer message-drawer" hidden>
@@ -160,6 +172,6 @@
   </footer>
 </section>
 
-<script src="/static/app.js?v=17"></script>
+<script src="/static/app.js?v=18"></script>
 </body>
 </html>

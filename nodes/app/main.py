@@ -1,16 +1,19 @@
-"""msf-nodes — platform-node registry + per-service status aggregator.
+"""nodes — unified registry + status service for every named resource on
+the platform.
 
-A "node" is an upstream platform host (today: the LAN router) that
-provides one or more services consumed by the rest of the stack — NTP
-time, GPS NMEA push, and so on. This service holds the registry and
-periodically asks the per-service owners (msf-ntp, msf-gps) what they
-think; it then composes a per-node view so the UI can render one
-green/yellow/red dot per node.
+A *node* is anything the platform tracks: the LAN router (`platform-node`),
+a SAPIENT middleware (`middleware`), a TAK Server (`tak-server`, future),
+an edge / fusion node (`edge-node` / `fusion-node`, future). The shape is
+the same for all of them — `{id, type, name, host, …, status, severity}`
+— and each type plugs in its own probe strategy under `app.probes.*`.
 
-Owns nothing data-side; pure aggregator. Same shape as msf-middlewares.
+This service replaces the older split into `msf-nodes` (platform health)
+and `msf-middlewares` (SAPIENT endpoints). Both are now filtered views of
+`GET /nodes/current?type=…`.
 
-Config: JSON array mounted at MSF_NODES_CONFIG (default
-/app/config/nodes.json). Each entry: {id, name, host, services[], description}.
+Config is a JSON array mounted at `MSF_NODES_CONFIG` (default
+/app/config/nodes.json). Edits via `PATCH /nodes/{id}` are persisted back
+to that file and the prober re-reads on the next round.
 """
 
 from __future__ import annotations
@@ -26,15 +29,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
-from .aggregator import aggregate
+from .probes import for_type
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
-log = logging.getLogger("msf-nodes")
+log = logging.getLogger("nodes")
 
 DEFAULT_CONFIG = "/app/config/nodes.json"
-DEFAULT_INTERVAL_S = 10.0
+DEFAULT_INTERVAL_S = 60.0   # gentle — see Apex/BSI receive-error history
 DEFAULT_NTP_URL = "http://127.0.0.1:8091"
 DEFAULT_GPS_URL = "http://127.0.0.1:8090"
 HTTP_TIMEOUT_S = 1.5
@@ -44,7 +48,8 @@ _INTERVAL_S = DEFAULT_INTERVAL_S
 _NTP_URL = DEFAULT_NTP_URL
 _GPS_URL = DEFAULT_GPS_URL
 
-_STATE: list[dict] = []
+# id → composed entry+status
+_STATE: dict[str, dict] = {}
 _CONFIG_ERROR: str | None = None
 _LAST_REFRESH_AT: float = 0.0
 _POLL_TASK: asyncio.Task | None = None
@@ -64,15 +69,18 @@ def _load_config() -> list[dict]:
     for i, e in enumerate(data):
         if not isinstance(e, dict):
             raise ValueError(f"entry {i} is not an object")
-        for f in ("id", "name", "host"):
+        for f in ("id", "type", "name", "host"):
             if f not in e:
                 raise ValueError(f"entry {i} missing required field {f!r}")
         if e["id"] in seen:
             raise ValueError(f"duplicate id: {e['id']!r}")
         seen.add(e["id"])
-        e.setdefault("services", [])
         e.setdefault("description", "")
     return data
+
+
+def _save_config(entries: list[dict]) -> None:
+    Path(_CONFIG_PATH).write_text(json.dumps(entries, indent=2) + "\n")
 
 
 def _http_get_json(url: str, timeout: float) -> dict:
@@ -81,9 +89,9 @@ def _http_get_json(url: str, timeout: float) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-async def _fetch_upstreams() -> tuple[dict | None, dict | None]:
-    """Pull msf-ntp's /ntp/sources and msf-gps's /gps/current in parallel.
-    Returns (ntp_sources_or_None, gps_fix_or_None)."""
+async def _fetch_context() -> dict:
+    """Pre-fetch the upstreams platform-node probes need, in parallel.
+    Returns a dict the probe modules can pull from."""
     async def _safe(url: str) -> dict | None:
         try:
             return await asyncio.to_thread(_http_get_json, url, HTTP_TIMEOUT_S)
@@ -94,11 +102,11 @@ async def _fetch_upstreams() -> tuple[dict | None, dict | None]:
         _safe(f"{_NTP_URL}/ntp/sources"),
         _safe(f"{_GPS_URL}/gps/current"),
     )
-    return ntp, gps
+    return {"ntp_sources": ntp, "gps_fix": gps}
 
 
 async def _refresh_round() -> None:
-    global _STATE, _CONFIG_ERROR, _LAST_REFRESH_AT
+    global _CONFIG_ERROR, _LAST_REFRESH_AT
     try:
         entries = _load_config()
         _CONFIG_ERROR = None
@@ -107,11 +115,43 @@ async def _refresh_round() -> None:
         log.warning("config load failed: %s", exc)
         return
 
-    ntp_sources, gps_fix = await _fetch_upstreams()
-    new_state = [aggregate(e, ntp_sources, gps_fix) for e in entries]
-    _STATE = new_state
-    _LAST_REFRESH_AT = time.time()
-    summary = ", ".join(f"{n['id']}={n['severity']}" for n in _STATE)
+    ctx = await _fetch_context()
+    now = time.time()
+    new_state: dict[str, dict] = {}
+    for entry in entries:
+        type_name = entry["type"]
+        probe_fn = for_type(type_name)
+        prev = _STATE.get(entry["id"], {})
+        if probe_fn is None:
+            extras = {
+                "severity": "unknown",
+                "ok": False,
+                "status": {"ok": False, "severity": "unknown",
+                           "error": f"no probe registered for type {type_name!r}"},
+            }
+        else:
+            try:
+                extras = await probe_fn(entry, ctx)
+            except Exception as exc:
+                log.warning("probe %s (%s) failed: %s", entry["id"], type_name, exc)
+                extras = {
+                    "severity": "fail",
+                    "ok": False,
+                    "status": {"ok": False, "severity": "fail",
+                               "error": f"probe error: {exc}"},
+                }
+
+        composed = dict(entry)
+        composed.update(extras)
+        composed["last_probed_at"] = now
+        composed["last_ok_at"] = now if extras.get("ok") else prev.get("last_ok_at")
+        composed["first_seen_at"] = prev.get("first_seen_at") or now
+        new_state[entry["id"]] = composed
+
+    _STATE.clear()
+    _STATE.update(new_state)
+    _LAST_REFRESH_AT = now
+    summary = ", ".join(f"{n['id']}={n['severity']}" for n in _STATE.values())
     log.info("refreshed %d nodes: %s", len(_STATE), summary or "(none)")
 
 
@@ -131,7 +171,7 @@ async def _lifespan(app: FastAPI):
     _INTERVAL_S = float(os.environ.get("MSF_NODES_INTERVAL_S", DEFAULT_INTERVAL_S))
     _NTP_URL = os.environ.get("MSF_NTP_URL", DEFAULT_NTP_URL).rstrip("/")
     _GPS_URL = os.environ.get("MSF_GPS_URL", DEFAULT_GPS_URL).rstrip("/")
-    log.info("msf-nodes starting: config=%s interval=%ss ntp=%s gps=%s",
+    log.info("nodes starting: config=%s interval=%ss ntp=%s gps=%s",
              _CONFIG_PATH, _INTERVAL_S, _NTP_URL, _GPS_URL)
     try:
         await _refresh_round()
@@ -149,9 +189,9 @@ async def _lifespan(app: FastAPI):
                 pass
 
 
-app = FastAPI(title="msf-nodes",
+app = FastAPI(title="nodes",
               version="1",
-              description="Platform-node registry + per-service status aggregator (NTP / GPS / ...).",
+              description="Unified registry + status for every platform resource (platform-node, middleware, …).",
               lifespan=_lifespan)
 
 
@@ -167,16 +207,61 @@ def health() -> dict:
 
 
 @app.get("/nodes/current")
-def current() -> dict:
+def current(type: str | None = None) -> dict:
+    """Latest known status for every node. `?type=…` filters the result —
+    used by the UI's two drawers to render only platform-nodes or only
+    middleware entries from the same source of truth."""
+    items = list(_STATE.values())
+    if type:
+        items = [n for n in items if n.get("type") == type]
     return {"config_error": _CONFIG_ERROR,
             "interval_s": _INTERVAL_S,
             "last_refresh_at": _LAST_REFRESH_AT or None,
-            "nodes": list(_STATE)}
+            "nodes": items}
 
 
 @app.get("/nodes/{node_id}")
 def one(node_id: str) -> dict:
-    for n in _STATE:
-        if n["id"] == node_id:
-            return n
-    raise HTTPException(status_code=404, detail=f"unknown node: {node_id}")
+    if node_id not in _STATE:
+        raise HTTPException(status_code=404, detail=f"unknown node: {node_id}")
+    return _STATE[node_id]
+
+
+class NodePatch(BaseModel):
+    host: str | None = Field(None, min_length=1, max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+    probe: bool | None = None
+
+
+@app.patch("/nodes/{node_id}")
+async def patch_one(node_id: str, req: NodePatch) -> dict:
+    """Edit a node's host / port / probe-flag. Persists to the mounted
+    JSON config and re-probes immediately. Same change set the old
+    msf-middlewares PATCH supported, available to every node type now."""
+    if req.host is None and req.port is None and req.probe is None:
+        raise HTTPException(status_code=400,
+                            detail="provide at least one of host, port, probe")
+    try:
+        entries = _load_config()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"config: {exc}")
+
+    target = next((e for e in entries if e["id"] == node_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"unknown node: {node_id}")
+
+    if req.host is not None:
+        target["host"] = req.host.strip()
+    if req.port is not None:
+        target["port"] = int(req.port)
+    if req.probe is not None:
+        target["probe"] = bool(req.probe)
+
+    try:
+        _save_config(entries)
+    except OSError as exc:
+        raise HTTPException(status_code=500,
+                            detail=f"write config: {exc} (is the volume rw?)")
+
+    await _refresh_round()
+    return _STATE.get(node_id, {})

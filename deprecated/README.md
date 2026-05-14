@@ -51,6 +51,26 @@ TAK over UDP. Having the UI also fan out was duplicate work and made
 retired here. Restore from history if you ever want an edge to bypass
 the middleware (e.g. middleware down, direct-to-TAK probe).
 
+### `nodes-legacy/` and `middlewares-legacy/`
+
+The original split into two services: `msf-nodes` (platform-host registry
+aggregating NTP + GPS into one severity per node) and `msf-middlewares`
+(SAPIENT-endpoint registry with TCP probing + editable host/port via
+PATCH). They worked, but ~90 % of the code was identical scaffolding —
+config loader, periodic prober, status cache, HTTP read/PATCH API — with
+the only real difference being the probe strategy. Adding a third type
+(TAK server, edge node, fusion node, …) would have meant a third copy of
+the same boilerplate.
+
+Both retired into one container — [`../nodes/`](../nodes/) — keyed on a
+`type` field per config entry and dispatching to per-type probe modules
+under `app/probes/`. Same data shapes for the UI; same `/nodes/current`,
+`/nodes/{id}`, `PATCH /nodes/{id}` endpoints (the old `/middlewares/*`
+URLs continue to work as filtered back-compat shims through the UI).
+
+Drop these two folders once the unified `nodes/` service has had a few
+weeks of comfortable use and nobody has needed to flip back.
+
 ## When to delete this folder
 
 Once we have a few weeks of comfortable use of the new stack and nothing

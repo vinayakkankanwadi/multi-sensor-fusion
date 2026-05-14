@@ -19,13 +19,13 @@
 #   ntp            Multi-source NTP probe. Polls every server in
 #                  MSF_NTP_SERVERS, exposes the voted offset/severity at
 #                  :8091/ntp/current.
-#   nodes          Platform-node registry + status aggregator. A "node"
-#                  is an upstream host that provides services (NTP, GPS,
-#                  …); this service rolls per-service health into one
-#                  green/yellow/red per node at :8093/nodes/current.
-#   middlewares    Registry + status prober for SAPIENT middlewares.
-#                  Mounted JSON config defines the list; TCP-probes each
-#                  on a cadence; exposes list+status at :8092/middlewares/current.
+#   nodes          Unified registry + status for every named platform
+#                  resource. Each config entry has a `type` (platform-node,
+#                  middleware, future tak-server / edge-node / fusion-node)
+#                  and a type-dispatched probe strategy. Exposes
+#                  :8093/nodes/current (optionally ?type=…). Replaces the
+#                  old split into msf-nodes + msf-middlewares — both moved
+#                  to deprecated/.
 #   apex           Real SAPIENT middleware (Python, Trio-based).
 #                  Child ports 5020/5010/5000, Peer 5001, Recorder 5003,
 #                  Parent forwardAll 5004, REST API 8081.
@@ -63,12 +63,13 @@ services:
     container_name: msf-ui
     network_mode: host
     environment:
-      # NTP / GPS / middlewares / nodes each live in their own service;
-      # UI polls over HTTP rather than owning any of them directly.
-      MSF_GPS_URL:         "http://127.0.0.1:8090"
-      MSF_NTP_URL:         "http://127.0.0.1:8091"
-      MSF_MIDDLEWARES_URL: "http://127.0.0.1:8092"
-      MSF_NODES_URL:       "http://127.0.0.1:8093"
+      # GPS, NTP, and the unified nodes service each live in their own
+      # container; UI polls over HTTP rather than owning any of them
+      # directly. /api/middlewares is now a filtered view of /api/nodes
+      # (no separate URL — same service, ?type=middleware).
+      MSF_GPS_URL:   "http://127.0.0.1:8090"
+      MSF_NTP_URL:   "http://127.0.0.1:8091"
+      MSF_NODES_URL: "http://127.0.0.1:8093"
     volumes:
       - ./ui/templates:/app/templates
       - ./ui/runs:/app/runs
@@ -108,11 +109,13 @@ services:
     restart: unless-stopped
 
   nodes:
-    # Registry + status aggregator for platform "nodes" — upstream hosts
-    # that provide services to the rest of the stack (NTP, GPS, …). Owns
-    # no data; periodically pulls msf-ntp's /ntp/sources and msf-gps's
-    # /gps/current and composes a per-node severity ("ok" iff every
-    # enabled service is "ok"). Exposes the list at :8093/nodes/current.
+    # Unified registry + status service for every named resource on the
+    # platform: the router (type=platform-node, NTP+GPS aggregator), SAPIENT
+    # endpoints (type=middleware, TCP probe), and any future type plug-in
+    # (type=tak-server, =edge-node, =fusion-node, …). Replaces the old
+    # split into msf-nodes + msf-middlewares; both now sit under
+    # deprecated/. The UI's two drawers consume filtered views of the
+    # same /nodes/current endpoint.
     build:
       context: ./nodes
       dockerfile: Dockerfile
@@ -121,42 +124,16 @@ services:
     network_mode: host
     environment:
       MSF_NODES_CONFIG:     "/app/config/nodes.json"
-      MSF_NODES_INTERVAL_S: "10"
+      # Default 60s — gentle enough that SAPIENT endpoints don't log each
+      # bare TCP-connect-then-close as a receiver error. Override at will.
+      MSF_NODES_INTERVAL_S: "60"
       MSF_NTP_URL:          "http://127.0.0.1:8091"
       MSF_GPS_URL:          "http://127.0.0.1:8090"
     volumes:
-      # Live-edit the node list without rebuilding.
-      - ./nodes/config/nodes.json:/app/config/nodes.json:ro
-    restart: unless-stopped
-
-  middlewares:
-    # Registry + status prober for SAPIENT middlewares. Reads its list
-    # from a mounted JSON config (live-editable without rebuild) and
-    # TCP-probes each entry on a fixed cadence. Exposes the list + live
-    # statuses at :8092/middlewares/current. Single source of truth for
-    # "which middleware can I talk to right now" — consumed by the UI
-    # picker and any future dashboards.
-    build:
-      context: ./middlewares
-      dockerfile: Dockerfile
-    image: msf-middlewares:latest
-    container_name: msf-middlewares
-    network_mode: host
-    environment:
-      MSF_MIDDLEWARES_CONFIG:      "/app/config/middlewares.json"
-      # Probe each middleware once a minute. Anything faster makes SAPIENT
-      # middlewares log a "Connection closed" error on every round (our
-      # bare TCP-connect-then-close looks like an aborted ASM session),
-      # which generates noise that drowns out real events. Per-entry
-      # "probe": false in the config skips a middleware entirely.
-      MSF_MIDDLEWARES_INTERVAL_S:   "60"
-      MSF_MIDDLEWARES_TIMEOUT_S:    "1.5"
-      MSF_MIDDLEWARES_WARN_AFTER_S: "0.5"
-    volumes:
-      # Live-edit the middleware list without rebuilding the image. Read-write
-      # so PATCH /middlewares/{id} can persist host/port changes typed in the
-      # UI back to the file on disk.
-      - ./middlewares/config/middlewares.json:/app/config/middlewares.json
+      # Live-edit the node list without rebuilding the image. Read-write
+      # so PATCH /nodes/{id} can persist host/port/probe changes typed
+      # in the UI back to the file on disk.
+      - ./nodes/config/nodes.json:/app/config/nodes.json
     restart: unless-stopped
 
   apex:

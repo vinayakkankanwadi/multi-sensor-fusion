@@ -1,9 +1,33 @@
 [
   {
     "id": "router",
+    "type": "platform-node",
     "name": "Teltonika router",
     "host": "192.168.201.1",
-    "services": ["ntp", "gps"],
-    "description": "LAN router providing NTP time and GPS NMEA push to the platform. Single source of platform clock + position today."
+    "services": [
+      "ntp",
+      "gps"
+    ],
+    "description": "LAN router providing NTP time and GPS NMEA push to the platform."
+  },
+  {
+    "id": "apex-local",
+    "type": "middleware",
+    "kind": "apex",
+    "name": "Apex Local",
+    "host": "127.0.0.1",
+    "port": 5020,
+    "probe": true,
+    "description": "Vendored Apex middleware on localhost (Child v2 :5020). Default SAPIENT target for the UI."
+  },
+  {
+    "id": "bsi-windows",
+    "type": "middleware",
+    "kind": "windows-bsi-harness",
+    "name": "BSI Windows",
+    "host": "192.168.201.152",
+    "port": 14000,
+    "probe": false,
+    "description": "Windows BSI Flex 335 v2 reference harness. Probing disabled because the harness logs each bare-TCP probe as a receiver error \u2014 selecting and sending is still fully functional."
   }
 ]

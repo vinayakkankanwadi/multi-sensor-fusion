@@ -725,7 +725,10 @@ let nodesRefreshTimer = null;
 async function loadNodes() {
   let payload;
   try {
-    const r = await fetch("/api/nodes");
+    // Filtered view: the Nodes drawer renders platform-nodes only. The
+    // Middleware drawer reads /api/middlewares (a separate filtered view
+    // backed by the same service) so the two row layouts stay distinct.
+    const r = await fetch("/api/nodes?type=platform-node");
     payload = r.ok ? await r.json() : { config_error: `HTTP ${r.status}`, nodes: [] };
   } catch (exc) {
     payload = { config_error: String(exc), nodes: [] };

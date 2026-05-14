@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import clocks, flow, gps, middlewares, nodes, ntp, proto_to_template, runner, templates_loader, validators
+from . import clocks, flow, gps, nodes, ntp, proto_to_template, runner, templates_loader, validators
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -334,40 +334,52 @@ async def api_ntp(server: str | None = None, timeout: float = 2.0) -> dict:
     return result.to_dict()
 
 
-# --- Nodes ------------------------------------------------------------------
+# --- Nodes (and its filtered views) -----------------------------------------
 
 @app.get("/api/nodes")
-async def api_nodes() -> dict:
-    """Platform-node registry + per-service status. Proxy through to
-    msf-nodes, which aggregates from msf-ntp + msf-gps."""
-    return await nodes.fetch_current()
+async def api_nodes(type: str | None = None) -> dict:
+    """Unified registry + status for every named platform resource. Proxy
+    through to the `nodes` service. `?type=…` filters to a subset
+    (platform-node, middleware, …) — the UI's two drawers use that to
+    render one source of truth two ways."""
+    return await nodes.fetch_current(type=type)
 
 
-# --- Middlewares ------------------------------------------------------------
-
+# Back-compat shim for the old UI URL. Filtered view of /api/nodes —
+# returns the same payload shape under "middlewares" so any consumer
+# still calling /api/middlewares keeps working through the migration.
 @app.get("/api/middlewares")
 async def api_middlewares() -> dict:
-    """Proxy through to msf-middlewares — list of configured middlewares +
-    their current statuses. The UI picker reads this on load and on
-    periodic refresh."""
-    return await middlewares.fetch_current()
+    payload = await nodes.fetch_current(type="middleware")
+    return {"config_error": payload.get("config_error"),
+            "interval_s": payload.get("interval_s"),
+            "middlewares": payload.get("nodes", [])}
 
 
-class MiddlewarePatch(BaseModel):
+class NodePatch(BaseModel):
     host: str | None = Field(None, min_length=1, max_length=253)
     port: int | None = Field(None, ge=1, le=65535)
+    probe: bool | None = None
 
 
-@app.patch("/api/middlewares/{mw_id}")
-async def api_patch_middleware(mw_id: str, req: MiddlewarePatch) -> dict:
-    """Persist edits to the named middleware's host/port. The middlewares
+@app.patch("/api/nodes/{node_id}")
+async def api_patch_node(node_id: str, req: NodePatch) -> dict:
+    """Persist edits to a node's host / port / probe-flag. The `nodes`
     service rewrites its mounted JSON config and re-probes immediately."""
     try:
-        return await middlewares.patch_one(mw_id, host=req.host, port=req.port)
+        return await nodes.patch_one(node_id, host=req.host, port=req.port,
+                                     probe=req.probe)
     except urllib.error.HTTPError as exc:  # type: ignore[name-defined]
         raise HTTPException(status_code=exc.code, detail=exc.read().decode())
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"middlewares service: {exc}")
+        raise HTTPException(status_code=502, detail=f"nodes service: {exc}")
+
+
+# Back-compat shim for the old PATCH URL. Same payload shape, routed
+# through to the unified /api/nodes PATCH.
+@app.patch("/api/middlewares/{mw_id}")
+async def api_patch_middleware(mw_id: str, req: NodePatch) -> dict:
+    return await api_patch_node(mw_id, req)
 
 
 # --- GPS --------------------------------------------------------------------

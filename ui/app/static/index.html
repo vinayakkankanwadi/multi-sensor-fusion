@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=15">
+<link rel="stylesheet" href="/static/style.css?v=16">
 </head>
 <body>
 <header>
@@ -60,18 +60,22 @@
 
   <main>
     <aside id="templates">
-      <h2>Templates</h2>
+      <h2>Templates
+        <details class="info-tip">
+          <summary aria-label="What is this?"></summary>
+          <div class="info-body">
+            Auto-discovered from <code>templates/</code>. Drop a new
+            <code>.json</code> there to add one, click <em>Build from .proto</em>
+            to regenerate the full set, or <em>Clear</em> to wipe them all.
+          </div>
+        </details>
+      </h2>
       <ul id="template-list"></ul>
       <div class="row templates-actions">
         <button id="regenerate" title="Rebuild every template under templates/ from the SAPIENT v2 .proto descriptors">Build from .proto</button>
         <button id="clear-templates" class="ghost" title="Delete every .json under templates/. The sidebar will go empty; click Build from .proto (or drop your own .json) to repopulate.">Clear</button>
         <span id="regenerate-status" class="muted small"></span>
       </div>
-      <p class="muted small">
-        Auto-discovered from <code>templates/</code>. Drop a new <code>.json</code>
-        there to add one, click <em>Build from .proto</em> to regenerate the
-        full set, or <em>Clear</em> to wipe them all.
-      </p>
     </aside>
 
     <section id="editor-pane">
@@ -87,21 +91,40 @@
           <button id="send" disabled>Send</button>
           <button id="validate-only" disabled>Validate only</button>
           <button id="reload-template" disabled>Reload from disk</button>
+          <details class="info-tip">
+            <summary aria-label="Available placeholders"></summary>
+            <div class="info-body">
+              <b>Placeholders:</b>
+              <ul>
+                <li><code>{{NOW}}</code> — current UTC RFC3339 timestamp</li>
+                <li><code>{{ULID}}</code> — fresh ULID per occurrence</li>
+                <li><code>{{NODE_ID}}</code> — the Node UUID from the top bar</li>
+                <li><code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code> — latest NMEA fix from msf-gps</li>
+              </ul>
+            </div>
+          </details>
           <span id="send-status" class="muted"></span>
         </div>
-        <p class="muted small">
-          Placeholders: <code>{{NOW}}</code>, <code>{{ULID}}</code>, <code>{{NODE_ID}}</code>,
-          <code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code>.
-        </p>
       </div>
 
       <div id="flow-pane" hidden>
-        <h3>Flow steps <span class="muted small">(single TCP connection — Registration first if you need ASM-id-aware messages)</span></h3>
+        <h3>Flow steps
+          <details class="info-tip">
+            <summary aria-label="How flows work"></summary>
+            <div class="info-body">
+              All steps share a <b>single TCP connection</b> to the selected
+              middleware. Put <em>Registration</em> first if any later step
+              depends on the ASM being registered (StatusReport, DetectionReport,
+              etc). Click a template in the sidebar to append it as a step;
+              use the ↑ / ↓ controls in the table to reorder.
+            </div>
+          </details>
+        </h3>
         <table id="flow-table">
           <thead><tr><th>#</th><th>template</th><th>wait_for</th><th>recv (s)</th><th>drain (s)</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
-        <div id="flow-empty" class="muted small">Click templates in the left sidebar to add steps. Drag-reorder via ↑/↓.</div>
+        <div id="flow-empty" class="muted small">Click a template on the left to add it as a step.</div>
         <div class="row">
           <button id="run-flow" disabled>Run flow</button>
           <button id="clear-flow">Clear</button>
@@ -137,6 +160,6 @@
   </footer>
 </section>
 
-<script src="/static/app.js?v=15"></script>
+<script src="/static/app.js?v=16"></script>
 </body>
 </html>

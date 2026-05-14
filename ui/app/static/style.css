@@ -43,6 +43,68 @@ header .status-toggle[aria-expanded="true"] {
 .drawer-header { gap: 10px; align-items: center; margin: 0 0 6px; }
 .drawer-header h2 { margin: 0; }
 
+/* Inline ⓘ help. <details><summary> gives us click-to-toggle for free.
+   The summary renders as a small circled "i"; the body floats below it
+   without disturbing surrounding layout. */
+.info-tip {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.info-tip > summary {
+  list-style: none;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  line-height: 12px;
+  text-align: center;
+  border: 1px solid #58a6ff;
+  border-radius: 50%;
+  color: #58a6ff;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  font-style: italic;
+  font-weight: 700;
+  display: inline-block;
+  background: transparent;
+  user-select: none;
+}
+.info-tip > summary::-webkit-details-marker { display: none; }
+.info-tip > summary::before { content: "i"; }
+.info-tip[open] > summary {
+  background: #58a6ff;
+  color: #0d1117;
+}
+.info-tip > .info-body {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 260px;
+  max-width: 360px;
+  padding: 8px 12px;
+  background: #1f2937;
+  border: 1px solid #58a6ff;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: normal;
+  font-style: normal;
+  color: #c9d1d9;
+  line-height: 1.45;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.info-tip > .info-body ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.info-tip > .info-body code {
+  background: #0d1117;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
 /* Message drawer — wraps the entire SAPIENT send experience (UUID
    controls + Templates aside + Editor + Result + Recent runs). Wider /
    taller than the Nodes & Middleware drawers because it hosts the main

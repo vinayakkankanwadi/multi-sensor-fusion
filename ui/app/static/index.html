@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=4">
+<link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 <header>
@@ -53,7 +53,6 @@
       <input id="validate-before" type="checkbox">
       <span>Validate before send</span>
     </label>
-    <button id="regenerate">Regenerate templates from .proto</button>
     <span id="endpoint-status" class="muted"></span>
   </div>
   <p class="muted">
@@ -68,9 +67,14 @@
   <aside id="templates">
     <h2>Templates</h2>
     <ul id="template-list"></ul>
+    <div class="row templates-actions">
+      <button id="regenerate" title="Rebuild every template under templates/ from the SAPIENT v2 .proto descriptors">Build from .proto</button>
+      <span id="regenerate-status" class="muted small"></span>
+    </div>
     <p class="muted small">
       Auto-discovered from <code>templates/</code>. Drop a new <code>.json</code>
-      there or click <em>Regenerate</em> to rebuild from the .proto descriptors.
+      there to add one, or click <em>Build from .proto</em> to regenerate the
+      full set from the SAPIENT v2 descriptors.
     </p>
   </aside>
 
@@ -134,6 +138,6 @@
   </table>
 </footer>
 
-<script src="/static/app.js?v=4"></script>
+<script src="/static/app.js?v=5"></script>
 </body>
 </html>

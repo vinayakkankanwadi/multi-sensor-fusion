@@ -331,7 +331,9 @@ async function validateOnly() {
 }
 
 async function regenerateTemplates() {
-  $("#send-status").textContent = "regenerating from .proto...";
+  const status = $("#regenerate-status");
+  status.textContent = "building...";
+  $("#regenerate").disabled = true;
   try {
     const r = await fetch("/api/templates/regenerate", {
       method: "POST",
@@ -339,14 +341,16 @@ async function regenerateTemplates() {
       body: "{}",
     });
     if (!r.ok) {
-      showError(`regenerate: HTTP ${r.status}`);
+      status.textContent = `build failed: HTTP ${r.status}`;
       return;
     }
     const data = await r.json();
-    $("#send-status").textContent = `regenerated ${data.count} templates`;
+    status.textContent = `built ${data.count} templates`;
     await loadTemplates();
   } catch (exc) {
-    showError(String(exc));
+    status.textContent = `build failed: ${exc}`;
+  } finally {
+    $("#regenerate").disabled = false;
   }
 }
 

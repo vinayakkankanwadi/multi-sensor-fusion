@@ -102,6 +102,15 @@ main > * {
 #editor-pane          { overflow: hidden; }   /* override main > * auto */
 #results-pane         { overflow: auto; }
 aside#templates       { overflow: auto; }
+aside#templates .templates-actions {
+  margin: 8px 0 4px;
+  gap: 6px;
+  align-items: center;
+}
+aside#templates .templates-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
 
 footer#runs-footer {
   background: #0d1117;

@@ -1,15 +1,18 @@
 """Converter tests — exercise each content type with a known input.
 
-The proto bindings under ui/sapient_msg/ are generated at docker
-build time. To run these tests on the host: have the ui container
-running (so the package can be reused), or generate sapient_msg/ first via
-`deprecated/compat-baseline/edge-sim/generate_proto.sh`.
+Requires the SAPIENT v2 proto bindings to be importable as
+`sapient_msg.bsi_flex_335_v2_0`. The simplest way to run these is inside
+the cot-bridge container (bindings are generated at build time):
+
+    docker exec msf-cot-bridge python -m pytest /app/sapient_to_cot
+
+On the host you need a venv with the bindings on PYTHONPATH —
+[`cot-bridge/Dockerfile`](../../cot-bridge/Dockerfile) shows how those
+are produced from the .proto files.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import os
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -17,22 +20,22 @@ from pathlib import Path
 
 import pytest
 
-# Skip cleanly if proto bindings aren't generated locally.
+# Skip cleanly if proto bindings aren't importable in this environment.
+try:
+    from sapient_msg.bsi_flex_335_v2_0 import (
+        location_pb2 as _loc,
+        registration_pb2 as _reg,
+        sapient_message_pb2 as _msg,
+        status_report_pb2 as _stat,
+    )
+except ImportError as exc:
+    pytest.skip(f"sapient_msg bindings not importable: {exc}",
+                allow_module_level=True)
+
+# Add the converter package to the path so `import sapient_to_cot` resolves
+# when running these tests directly on the host (inside the cot-bridge
+# image the package is already on sys.path).
 THIS = Path(__file__).resolve().parent
-HOST_PROTO = THIS.parent.parent / "deprecated" / "compat-baseline" / "edge-sim" / "sapient_msg"
-if not HOST_PROTO.exists():
-    pytest.skip("sapient_msg bindings not present locally", allow_module_level=True)
-
-sys.path.insert(0, str(HOST_PROTO.parent))    # deprecated/compat-baseline/edge-sim/
-
-from sapient_msg.bsi_flex_335_v2_0 import (  # noqa: E402
-    location_pb2 as _loc,
-    registration_pb2 as _reg,
-    sapient_message_pb2 as _msg,
-    status_report_pb2 as _stat,
-)
-
-# Add the converter package to the path
 sys.path.insert(0, str(THIS.parent.parent))
 import sapient_to_cot as cvt  # noqa: E402
 

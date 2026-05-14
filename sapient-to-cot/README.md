@@ -1,15 +1,19 @@
 # sapient-to-cot
 
 A small Python package that turns SAPIENT BSI Flex 335 v2 messages into
-Cursor-on-Target (CoT) XML events. Intended to be reused by:
+Cursor-on-Target (CoT) XML events. The package is **transport-agnostic**
+— `convert()` returns CoT XML bytes (or `None` if there's no mapping or
+no usable position), and the caller decides how to ship them.
 
-- the **msf-ui** (`ui/`) when "Also send to TAK" is ticked
-- the **future Python middleware** (`middleware/`) for transparent TAK fan-out
-- the **future fusion node** (`fusion-node/`) for emitting fused tracks to TAK
+Today the only consumer is [`cot-bridge/`](../cot-bridge/) — a standalone
+SAPIENT → CoT → TAK fan-out service that's plugged into Apex's outbound
+Parent `forwardAll`. It vendors this package in via Docker build context
+so there's no PyPI install step.
 
-The package itself is transport-agnostic — it just produces CoT XML bytes.
-Sending them is the caller's job (see [`deprecated/tak-server-cot/cot.py`](../deprecated/tak-server-cot/cot.py)
-for a UDP sender, or `ui/app/tak_bridge.py` for the in-UI fan-out).
+Future consumers expected to use it the same way:
+
+- a **fusion node** emitting fused tracks to TAK
+- any other downstream SAPIENT sink that wants CoT output
 
 ## Layout
 
@@ -45,32 +49,34 @@ from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as M
 msg = M.SapientMessage()
 # ... populate msg ...
 
-xml = convert(msg, fallback_lat=-27.5037, fallback_lon=153.0924, fallback_alt=29.7)
+xml = convert(msg, fallback_lat=-27.4698, fallback_lon=153.0251, fallback_alt=27.0)
 if xml is not None:
-    sock.sendto(xml, ("192.168.201.102", 6969))
+    sock.sendto(xml, ("192.168.201.222", 6969))
 ```
 
 ## Tests
 
+The cot-bridge image installs `pytest` and bakes this package alongside
+the rest of its source, so the simplest way to run the tests is from
+inside that container:
+
 ```bash
-# from the repo root, with the ui venv that has proto bindings
-deprecated/compat-baseline/edge-sim/.venv/bin/python -m pytest sapient-to-cot/tests -v
+docker exec msf-cot-bridge python -m pytest /app/sapient_to_cot -v
 ```
 
-6 tests pass: each content-type mapping plus the "no CoT for unsupported
-content" guard.
+Tests cover each content-type mapping plus the "no CoT for unsupported
+content" guard. To run on the host you need a venv with the v2 proto
+bindings on `PYTHONPATH`; the [`cot-bridge/Dockerfile`](../cot-bridge/Dockerfile)
+shows how those bindings are produced from the .proto files.
 
-## Wired into the msf-ui
+## How cot-bridge uses it
 
-In the msf-ui's top toolbar, tick **Also send to TAK** to fan-out
-every Send / Run flow to the TAK Server simultaneously. TAK host/port
-come from the UI fields (default `192.168.201.102:6969` from
-`MSF_TAK_HOST`/`MSF_TAK_PORT` env vars).
-
-The result panel shows the TAK fan-out outcome alongside the middleware
-result, e.g.:
-
-```
-20260503T_xxxxxx → sent registration, received 1 reply(ies)
-   ·   TAK: sent 556B (a-f-G-U) → udp://192.168.201.102:6969
-```
+[`cot-bridge/`](../cot-bridge/) accepts SAPIENT length-prefix protobuf
+on TCP `:5005`, calls `convert(msg, fallback_lat=…, fallback_lon=…,
+fallback_alt=…)`, and UDP-sends the XML to `MSF_TAK_HOST:MSF_TAK_PORT`.
+Apex's outbound Parent `forwardAll` connection points at `127.0.0.1:5005`
+(see [`apex/apex_config.json`](../apex/apex_config.json)), so any
+SAPIENT message landing on Apex from a Child or Peer is automatically
+mirrored as CoT on the map. Messages with no CoT mapping (e.g.
+`registration_ack`) return `None` and cot-bridge bumps its
+`skipped_no_mapping` counter.

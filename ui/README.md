@@ -2,8 +2,15 @@
 
 A Docker-packaged web UI for sending any SAPIENT BSI Flex 335 v2 message
 template to a configurable IP/port and inspecting the wire conversation.
-Used as a regression-test suite against the Windows reference harness, and
-later against the new Python middleware as it comes online.
+Treated as **one edge node** in the live stack: by default it talks to
+[`apex/`](../apex/) (the SAPIENT middleware) on `127.0.0.1:5020`, and
+Apex fans the messages out to the Windows BSI Flex reference harness and
+to [`cot-bridge/`](../cot-bridge/) → TAK. The UI itself no longer touches
+TAK directly — that was retired once Apex took over the fan-out.
+
+You can still aim it at any SAPIENT endpoint directly (BSI on
+`192.168.201.152:14000`, another middleware, a stub) by changing the
+Host/Port in the top bar.
 
 The whole thing is **template-driven**: adding a new SAPIENT message type
 is a matter of dropping a `.json` file under [`templates/`](templates/) on
@@ -16,7 +23,6 @@ no Python changes**.
 ui/
 ├── README.md             this file
 ├── Dockerfile            python:3.12-slim + grpc_tools (proto codegen at build time)
-├── docker-compose.yml    one service, host networking, templates/ + runs/ as volumes
 ├── requirements.txt
 ├── .gitignore            ignores generated bindings + transcripts
 ├── app/
@@ -24,6 +30,9 @@ ui/
 │   ├── framer.py         spec §4.2 — 4-byte little-endian length prefix
 │   ├── templates_loader.py   discovery, placeholder substitution, JSON->protobuf parse
 │   ├── runner.py         async TCP client, send + drain + transcript
+│   ├── flow.py           multi-step flow over a single TCP connection
+│   ├── ntp.py / clocks.py    NTP probe + clock-sync panel
+│   ├── gps.py            NMEA-over-UDP listener for live router GPS push
 │   └── static/           single-page UI (no SPA framework)
 ├── templates/            mounted volume — drop .json here
 │   ├── registration.json    spec §6.2 — minimal compliant Registration
@@ -38,10 +47,14 @@ ui/
 └── runs/                 mounted volume — per-run JSON transcripts
 ```
 
+The compose file is at the **repo root** ([`docker-compose.yml`](../docker-compose.yml)),
+not under `ui/`, because the UI is one of three services (`ui`, `apex`,
+`cot-bridge`) and they share host networking.
+
 ## Step-by-step: bring it up
 
 ```bash
-cd ui
+# from the repo root
 docker compose build         # ~30s; bakes proto bindings into the image
 docker compose up -d
 ```
@@ -50,8 +63,9 @@ Open http://localhost:8080 in your browser.
 
 ## Step-by-step: send a Registration
 
-1. Top bar → set **Host** (e.g. `192.168.201.152`) and **Port** (`14000` for
-   the SDA's ASM-facing port). Settings persist in browser localStorage.
+1. Top bar → **Host** defaults to `127.0.0.1` and **Port** to `5020` (Apex,
+   Child v2). Override for direct-to-BSI (`192.168.201.152:14000`) or any
+   other SAPIENT endpoint. Settings persist in browser localStorage.
 2. **Node UUID** is auto-generated. Click **New UUID** to get a fresh one.
 3. Left sidebar → click **registration**.
 4. Editor shows the JSON. The `{{NOW}}`, `{{NODE_ID}}`, `{{ULID}}`
@@ -106,19 +120,17 @@ JSON-driven workflow can use it.
 
 ## Step-by-step: GPS from the router
 
-If the router exposes a GPS module via the RutOS REST API, the msf-ui
-can pull the live fix and show it in the Clock-sync panel **and** substitute
-it into templates as `{{GPS_LAT}}`, `{{GPS_LON}}`, `{{GPS_ALT}}` — the same
-way `{{NODE_ID}}` and `{{NOW}}` work.
+The UI listens for NMEA-over-UDP push from a router that supports NMEA
+forwarding (e.g. a Teltonika RutOS box configured to push GNSS sentences
+to a UDP target). The container binds `MSF_NMEA_BIND:MSF_NMEA_PORT`
+(default `0.0.0.0:8500`) at startup, parses every supported sentence
+(GGA / RMC / GLL / GNS — multi-GNSS), and exposes the most recent fix in
+the Clock-sync panel **and** as the `{{GPS_LAT}}`, `{{GPS_LON}}`,
+`{{GPS_ALT}}` template placeholders.
 
-The router needs admin credentials, so set them as host env vars (never
-typed into the browser):
-
-```bash
-export MSF_ROUTER_USER=admin
-export MSF_ROUTER_PASS='<your router password>'
-docker compose up -d   # picks up the env vars from your shell
-```
+Point the router at this host (UDP / port 8500). No credentials required
+— it's a push-only feed. Some gateways prepend a short prefix before the
+NMEA `$`; the parser strips anything up to the first `$` automatically.
 
 Then in any template you want geolocated, replace fixed numbers with
 placeholders, e.g. for a Detection report:
@@ -139,9 +151,13 @@ Test directly:
 curl -s http://localhost:8080/api/gps | jq
 ```
 
-If credentials aren't set you'll get a clear "router credentials not
-configured" error rather than a guess. The UI's Clock-sync panel shows the
-GPS row with the same explanation.
+If no NMEA datagrams have arrived yet, `/api/gps` returns the last-known
+fix (if any) and an `age_s` so you can see how stale it is. The
+Clock-sync panel surfaces the same information.
+
+`/api/gps/raw` exposes the last few raw datagrams (hex + ascii) plus
+listener stats — useful for confirming the router is actually sending,
+and for spotting prefixes the parser had to strip.
 
 ## Step-by-step: NTP sync check
 
@@ -172,25 +188,18 @@ The format is google.protobuf.json_format encoding of `SapientMessage`
 (see [templates/README.md](templates/README.md) for placeholders and the
 known FluentValidator quirks the .proto doesn't capture).
 
-## Verified end-to-end (today)
+## Verified end-to-end
 
-Smoke-tested against a local Python stub (the Windows host at
-`192.168.201.152:14000` was offline at the time):
+Live chain (UI → Apex → BSI + Apex → cot-bridge → TAK) round-trips a
+Registration, StatusReport and DetectionReport through Apex; Apex's own
+ack returns to the UI inside the recv window, while the same messages
+land on TAK as CoT XML via cot-bridge. The Windows BSI harness's
+`registration_ack` (node_id `71d47fbf…`) arrives back on the same Apex
+TCP connection.
 
-```
-=== /api/send template=registration ===
-  run_id: 20260503T030719_a2f97e   error: None
-    t=    0.1ms  sent  registration       (171b)
-    t=    0.7ms  recv  registration_ack   (102b)
-=== /api/send template=status_report ===
-    t=    0.1ms  sent  status_report      ( 95b)
-    t=    0.5ms  recv  registration_ack   (103b)
-... (every other template round-trips identically)
-```
-
-Adding a `custom_demo.json` file under `templates/` on the host while the
-container was running made it appear in the next `GET /api/templates` —
-confirming live template discovery without restart.
+Live template discovery: dropping a `custom_demo.json` under
+`templates/` on the host while the container is running makes it appear
+in the next `GET /api/templates` — no rebuild, no restart.
 
 ## Tests
 
@@ -198,7 +207,7 @@ Unit tests live in `tests/` and are baked into the image so they can run
 inside the container without a venv:
 
 ```bash
-docker exec msf-ui pytest /app/tests -q     # 24 passed
+docker exec msf-ui pytest /app/tests -q     # 37 passed, 1 skipped
 ```
 
 Coverage:
@@ -235,9 +244,13 @@ the 9 templates against a local stub; recent-runs API.
 | POST | `/api/templates/regenerate` | Re-run the proto-to-template converter |
 | POST | `/api/validate` | Body: `{node_id, template_name?, raw_json?}` → `{ok, errors[]}` |
 | POST | `/api/send` | Body: `{host,port,node_id,template_name,raw_json?,recv_timeout_s?,drain_after_s?,validate_before_send?}` → transcript |
+| POST | `/api/send_flow` | Body: `{host,port,node_id,steps[],validate_before_send?}` — multi-step flow over one TCP connection |
 | GET | `/api/runs` | Latest 50 runs (summary) |
 | GET | `/api/runs/{run_id}` | Full transcript JSON |
 | GET | `/api/ntp?server=&timeout=` | Probe NTP server, return offset + severity |
+| GET | `/api/gps` | Latest NMEA fix (latitude / longitude / altitude / age) |
+| GET | `/api/gps/raw` | Listener stats + last raw datagrams (hex + ascii) |
+| GET | `/api/clocks` | Composite: local + NTP + (optional) Windows clock + GPS, with deltas |
 
 ## Networking
 

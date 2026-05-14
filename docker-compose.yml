@@ -55,9 +55,11 @@ services:
     restart: unless-stopped
 
   cot-bridge:
-    # Standalone SAPIENT → CoT → TAK service. Accepts SAPIENT TCP on :5005
-    # (same wire as Apex/BSI), converts via sapient_to_cot, fan-outs to TAK
-    # over UDP. Not yet plugged into Apex; runs in isolation for testing.
+    # SAPIENT → CoT → TAK fan-out. Accepts SAPIENT TCP on :5005 (same wire
+    # as Apex/BSI), converts via sapient_to_cot, UDP-sends CoT to TAK.
+    # Wired up as one of Apex's outbound Parent forwardAll targets (see
+    # apex/apex_config.json → 127.0.0.1:5005). Still launchable standalone
+    # for direct-feed testing — point any SAPIENT producer at :5005.
     build:
       context: ./cot-bridge
       dockerfile: Dockerfile

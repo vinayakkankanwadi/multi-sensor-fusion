@@ -11,9 +11,12 @@ send time.
 
 | Placeholder | Replaced with |
 |---|---|
-| `{{NOW}}` | Current UTC RFC3339 timestamp, e.g. `2026-05-03T12:34:56.000Z` |
+| `{{NOW}}` | Current UTC RFC3339 timestamp, e.g. `2026-05-13T12:34:56.000Z` |
 | `{{ULID}}` | A freshly generated ULID. Each occurrence is independent. |
 | `{{NODE_ID}}` | The UUID node_id configured in the UI. |
+| `{{GPS_LAT}}` | Latest NMEA fix latitude (decimal degrees). Falls back to `0.0` if no fix yet. |
+| `{{GPS_LON}}` | Latest NMEA fix longitude (decimal degrees). |
+| `{{GPS_ALT}}` | Latest NMEA fix altitude (m). |
 
 The exact JSON shape must follow the v2 protobuf
 ([`SAPIENT-Proto-Files/bsi_flex_335_v2_0/`](../../SAPIENT-Proto-Files/bsi_flex_335_v2_0/)).

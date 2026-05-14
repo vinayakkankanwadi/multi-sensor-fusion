@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=12">
+<link rel="stylesheet" href="/static/style.css?v=15">
 </head>
 <body>
 <header>
@@ -16,26 +16,34 @@
           title="SAPIENT middleware picker">
     <span class="label">Middleware</span>
   </button>
+  <button id="message-toggle" class="ghost small status-toggle" aria-expanded="false"
+          title="Send a templated SAPIENT message — UUID, templates, editor, result, recent runs">
+    <span class="label">Message</span>
+  </button>
 </header>
 
-<section class="endpoints">
-  <section id="nodes-panel" class="drawer" hidden>
-    <div class="row drawer-header">
-      <h2>Nodes</h2>
-      <span id="nodes-status" class="muted small"></span>
-    </div>
-    <div id="nodes-list" class="nodes-list"></div>
-  </section>
+<section id="nodes-panel" class="drawer" hidden>
+  <div class="row drawer-header">
+    <h2>Nodes</h2>
+    <span id="nodes-status" class="muted small"></span>
+  </div>
+  <div id="nodes-list" class="nodes-list"></div>
+</section>
 
-  <section id="middleware-panel" class="drawer" hidden>
-    <div class="row drawer-header">
-      <h2>Middleware</h2>
-      <span id="middleware-status" class="muted small"></span>
-    </div>
-    <div id="middleware-list" class="middleware-list"></div>
-  </section>
+<section id="middleware-panel" class="drawer" hidden>
+  <div class="row drawer-header">
+    <h2>Middleware</h2>
+    <span id="middleware-status" class="muted small"></span>
+  </div>
+  <div id="middleware-list" class="middleware-list"></div>
+</section>
 
-  <div class="row">
+<section id="message-panel" class="drawer message-drawer" hidden>
+  <div class="row drawer-header message-drawer-header">
+    <h2>Message</h2>
+    <span id="message-status" class="muted small"></span>
+  </div>
+  <div class="message-controls row">
     <label>Node UUID <input id="node-id" type="text" placeholder="auto-generated"></label>
     <button id="new-uuid">New UUID</button>
     <label class="checkbox" title="Generate a fresh UUID before every Send / Run flow — avoids 'Another ASM is using this ID' errors">
@@ -49,86 +57,86 @@
       <span>Validate before send</span>
     </label>
   </div>
-</section>
 
-<main>
-  <aside id="templates">
-    <h2>Templates</h2>
-    <ul id="template-list"></ul>
-    <div class="row templates-actions">
-      <button id="regenerate" title="Rebuild every template under templates/ from the SAPIENT v2 .proto descriptors">Build from .proto</button>
-      <button id="clear-templates" class="ghost" title="Delete every .json under templates/. The sidebar will go empty; click Build from .proto (or drop your own .json) to repopulate.">Clear</button>
-      <span id="regenerate-status" class="muted small"></span>
-    </div>
-    <p class="muted small">
-      Auto-discovered from <code>templates/</code>. Drop a new <code>.json</code>
-      there to add one, click <em>Build from .proto</em> to regenerate the
-      full set, or <em>Clear</em> to wipe them all.
-    </p>
-  </aside>
-
-  <section id="editor-pane">
-    <div class="row mode-tabs">
-      <button id="mode-single" class="tab active">Single message</button>
-      <button id="mode-flow" class="tab">Flow</button>
-      <span id="editor-title" class="muted"></span>
-    </div>
-
-    <div id="single-pane">
-      <textarea id="editor" spellcheck="false" placeholder="Pick a template on the left..."></textarea>
-      <div class="row">
-        <button id="send" disabled>Send</button>
-        <button id="validate-only" disabled>Validate only</button>
-        <button id="reload-template" disabled>Reload from disk</button>
-        <span id="send-status" class="muted"></span>
+  <main>
+    <aside id="templates">
+      <h2>Templates</h2>
+      <ul id="template-list"></ul>
+      <div class="row templates-actions">
+        <button id="regenerate" title="Rebuild every template under templates/ from the SAPIENT v2 .proto descriptors">Build from .proto</button>
+        <button id="clear-templates" class="ghost" title="Delete every .json under templates/. The sidebar will go empty; click Build from .proto (or drop your own .json) to repopulate.">Clear</button>
+        <span id="regenerate-status" class="muted small"></span>
       </div>
       <p class="muted small">
-        Placeholders: <code>{{NOW}}</code>, <code>{{ULID}}</code>, <code>{{NODE_ID}}</code>,
-        <code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code>.
+        Auto-discovered from <code>templates/</code>. Drop a new <code>.json</code>
+        there to add one, click <em>Build from .proto</em> to regenerate the
+        full set, or <em>Clear</em> to wipe them all.
       </p>
-    </div>
+    </aside>
 
-    <div id="flow-pane" hidden>
-      <h3>Flow steps <span class="muted small">(single TCP connection — Registration first if you need ASM-id-aware messages)</span></h3>
-      <table id="flow-table">
-        <thead><tr><th>#</th><th>template</th><th>wait_for</th><th>recv (s)</th><th>drain (s)</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <div id="flow-empty" class="muted small">Click templates in the left sidebar to add steps. Drag-reorder via ↑/↓.</div>
-      <div class="row">
-        <button id="run-flow" disabled>Run flow</button>
-        <button id="clear-flow">Clear</button>
-        <button id="preset-reg-status" class="ghost" title="Add Registration → StatusReport">+ register&amp;status</button>
-        <button id="preset-reg-status-det" class="ghost" title="Add Registration → StatusReport → DetectionReport">+ register&amp;status&amp;detect</button>
-        <span id="flow-status" class="muted"></span>
+    <section id="editor-pane">
+      <div class="row mode-tabs">
+        <button id="mode-single" class="tab active">Single message</button>
+        <button id="mode-flow" class="tab">Flow</button>
+        <span id="editor-title" class="muted"></span>
       </div>
+
+      <div id="single-pane">
+        <textarea id="editor" spellcheck="false" placeholder="Pick a template on the left..."></textarea>
+        <div class="row">
+          <button id="send" disabled>Send</button>
+          <button id="validate-only" disabled>Validate only</button>
+          <button id="reload-template" disabled>Reload from disk</button>
+          <span id="send-status" class="muted"></span>
+        </div>
+        <p class="muted small">
+          Placeholders: <code>{{NOW}}</code>, <code>{{ULID}}</code>, <code>{{NODE_ID}}</code>,
+          <code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code>.
+        </p>
+      </div>
+
+      <div id="flow-pane" hidden>
+        <h3>Flow steps <span class="muted small">(single TCP connection — Registration first if you need ASM-id-aware messages)</span></h3>
+        <table id="flow-table">
+          <thead><tr><th>#</th><th>template</th><th>wait_for</th><th>recv (s)</th><th>drain (s)</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="flow-empty" class="muted small">Click templates in the left sidebar to add steps. Drag-reorder via ↑/↓.</div>
+        <div class="row">
+          <button id="run-flow" disabled>Run flow</button>
+          <button id="clear-flow">Clear</button>
+          <button id="preset-reg-status" class="ghost" title="Add Registration → StatusReport">+ register&amp;status</button>
+          <button id="preset-reg-status-det" class="ghost" title="Add Registration → StatusReport → DetectionReport">+ register&amp;status&amp;detect</button>
+          <span id="flow-status" class="muted"></span>
+        </div>
+      </div>
+    </section>
+
+    <section id="results-pane">
+      <h2>Result</h2>
+      <div id="result-summary" class="muted">No run yet.</div>
+      <div id="validation-errors" class="muted small"></div>
+      <pre id="result-transcript"></pre>
+    </section>
+  </main>
+
+  <footer id="runs-footer">
+    <div class="row runs-bar">
+      <h2>Recent runs</h2>
+      <span class="muted small" id="runs-count"></span>
+      <button id="refresh-runs" class="ghost">Refresh</button>
+      <button id="clear-runs" class="ghost" title="Delete every run JSON under runs/. Destructive — the transcripts are the only record.">Clear</button>
+      <span id="clear-runs-status" class="muted small"></span>
     </div>
-  </section>
+    <table id="recent-runs">
+      <thead>
+        <tr><th>time</th><th>template</th><th>sent</th><th>result</th><th>target</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </footer>
+</section>
 
-  <section id="results-pane">
-    <h2>Result</h2>
-    <div id="result-summary" class="muted">No run yet.</div>
-    <div id="validation-errors" class="muted small"></div>
-    <pre id="result-transcript"></pre>
-  </section>
-</main>
-
-<footer id="runs-footer">
-  <div class="row runs-bar">
-    <h2>Recent runs</h2>
-    <span class="muted small" id="runs-count"></span>
-    <button id="refresh-runs" class="ghost">Refresh</button>
-    <button id="clear-runs" class="ghost" title="Delete every run JSON under runs/. Destructive — the transcripts are the only record.">Clear</button>
-    <span id="clear-runs-status" class="muted small"></span>
-  </div>
-  <table id="recent-runs">
-    <thead>
-      <tr><th>time</th><th>template</th><th>sent</th><th>result</th><th>target</th></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</footer>
-
-<script src="/static/app.js?v=12"></script>
+<script src="/static/app.js?v=15"></script>
 </body>
 </html>

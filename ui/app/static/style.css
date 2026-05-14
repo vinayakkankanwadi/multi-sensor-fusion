@@ -43,12 +43,33 @@ header .status-toggle[aria-expanded="true"] {
 .drawer-header { gap: 10px; align-items: center; margin: 0 0 6px; }
 .drawer-header h2 { margin: 0; }
 
-section.endpoints {
-  padding: 12px 20px;
+/* Message drawer — wraps the entire SAPIENT send experience (UUID
+   controls + Templates aside + Editor + Result + Recent runs). Wider /
+   taller than the Nodes & Middleware drawers because it hosts the main
+   work area; the inner <main> + <footer> keep their existing layouts
+   when visible, and are display:none'd by [hidden] when collapsed. */
+.message-drawer {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.message-drawer > .message-drawer-header {
+  padding: 8px 20px;
+  background: #0d1117;
+  border-bottom: 1px solid #30363d;
+  margin: 0;
+}
+.message-drawer > .message-drawer-header h2 {
+  margin: 0;
+  font-size: 14px;
+  color: #8b949e;
+}
+.message-drawer > .message-controls {
+  padding: 10px 20px;
   background: #0d1117;
   border-bottom: 1px solid #30363d;
 }
-section.endpoints h2 { margin: 0 0 8px; font-size: 14px; color: #8b949e; }
 
 /* Middleware picker (lives in the Middleware drawer) */
 .middleware-list {

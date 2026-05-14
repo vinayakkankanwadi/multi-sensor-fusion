@@ -669,6 +669,18 @@ async function loadRecentRuns() {
   tbody.innerHTML = "";
   const countEl = $("#runs-count");
   if (countEl) countEl.textContent = runs.length ? `${runs.length} run(s) on disk` : "no runs yet";
+
+  // Message-toggle severity reflects the most recent run: error → fail,
+  // sent-but-no-reply → warn, success → ok, no runs ever → unknown.
+  if (runs.length === 0) {
+    applyToggleSeverity("message-toggle", "unknown");
+  } else {
+    const latest = runs[0];
+    let sev = "ok";
+    if (latest.error) sev = "fail";
+    else if ((latest.recv_contents || []).length === 0) sev = "warn";
+    applyToggleSeverity("message-toggle", sev);
+  }
   for (const run of runs) {
     const tr = document.createElement("tr");
     tr.className = run.error ? "err" : "ok";
@@ -829,11 +841,13 @@ function init() {
   $("#refresh-runs")?.addEventListener("click", loadRecentRuns);
   $("#clear-runs")?.addEventListener("click", clearRuns);
 
-  // Header toggles for Nodes + Middleware. Click to expand/collapse the
-  // drawer below; the toggle's coloured dot reflects worst-of severity
+  // Header toggles for Nodes / Middleware / Message. Click to expand or
+  // collapse the corresponding drawer; each toggle's coloured dot reflects
+  // worst-of severity (Nodes/Middleware) or last-run status (Message),
   // and stays accurate even while the drawer is closed.
   $("#nodes-toggle").addEventListener("click", toggleDrawer("nodes-toggle", "nodes-panel"));
   $("#middleware-toggle").addEventListener("click", toggleDrawer("middleware-toggle", "middleware-panel"));
+  $("#message-toggle").addEventListener("click", toggleDrawer("message-toggle", "message-panel"));
 
   $("#mode-single").addEventListener("click", () => setMode("single"));
   $("#mode-flow").addEventListener("click", () => setMode("flow"));

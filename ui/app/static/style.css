@@ -215,9 +215,9 @@ button.ghost.small.status-fail::before { background: #f85149; }
   gap: 4px;
 }
 .node-row {
-  /* dot · radio · name · host · service chips */
+  /* dot · radio · name · host · type-badge · per-type extras · actions */
   display: grid;
-  grid-template-columns: 16px 20px 140px 140px 1fr;
+  grid-template-columns: 16px 20px 160px 180px 90px 1fr auto;
   gap: 10px;
   align-items: center;
   padding: 4px 8px;
@@ -232,7 +232,12 @@ button.ghost.small.status-fail::before { background: #f85149; }
   border-color: #58a6ff;
   background: #1f2937;
 }
+.node-row.platform-node { cursor: default; }
 .node-row input[type="radio"] { margin: 0; cursor: pointer; }
+.node-row .radio-placeholder {
+  display: inline-block;
+  width: 14px; height: 14px;
+}
 .node-row .name { color: #c9d1d9; font-weight: 500; }
 .node-row .host {
   font-family: ui-monospace, monospace;
@@ -256,6 +261,123 @@ button.ghost.small.status-fail::before { background: #f85149; }
   width: 8px;
   height: 8px;
   border-radius: 50%;
+}
+.type-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #21262d;
+  color: #8b949e;
+  white-space: nowrap;
+  text-align: center;
+}
+.type-badge.type-middleware    { background: #1f3a59; color: #79c0ff; }
+.type-badge.type-platform-node { background: #1d3325; color: #7ee787; }
+.row-actions {
+  display: flex;
+  gap: 4px;
+}
+.row-actions button {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.row-actions .row-delete { color: #f85149; }
+
+/* Add-Node button in the drawer header — small, ghost. */
+#add-node { margin-left: auto; font-size: 12px; padding: 2px 10px; }
+
+/* Node Add/Edit modal — simple overlay; backdrop click + Cancel both
+   dismiss. Form is laid out with one field per row so type-specific
+   sections can show/hide without reflowing the rest. */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+}
+.modal[hidden] { display: none; }
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+}
+.modal-card {
+  position: relative;
+  background: #0d1117;
+  border: 1px solid #58a6ff;
+  border-radius: 6px;
+  padding: 16px 20px;
+  width: min(520px, 92%);
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  color: #c9d1d9;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+.modal-card h3 { margin: 0 0 12px; font-size: 16px; }
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8b949e;
+}
+.form-row label.checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+.form-row input[type="text"],
+.form-row input[type="number"],
+.form-row select,
+.form-row textarea {
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 3px;
+}
+.form-row input:disabled, .form-row select:disabled {
+  color: #6e7681;
+  cursor: not-allowed;
+}
+.form-row .port-cell {
+  max-width: 120px;
+}
+.form-row fieldset {
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  padding: 6px 10px;
+}
+.form-row fieldset legend {
+  font-size: 11px;
+  color: #8b949e;
+  padding: 0 4px;
+}
+.form-hint {
+  font-size: 11px;
+  color: #6e7681;
+}
+.form-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+}
+.form-actions .err {
+  margin-right: auto;
 }
 
 /* Services drawer (lives in the Services drawer). Rows are read-only —

@@ -357,26 +357,78 @@ async def api_middlewares() -> dict:
 
 
 class NodePatch(BaseModel):
+    # Same field set as the nodes service expects — id/type immutable.
+    name: str | None = Field(None, min_length=1, max_length=128)
     host: str | None = Field(None, min_length=1, max_length=253)
     port: int | None = Field(None, ge=1, le=65535)
+    services: list[str] | None = None
+    kind: str | None = Field(None, max_length=64)
     probe: bool | None = None
+    health_path: str | None = Field(None, max_length=128)
+    probe_kind: str | None = Field(None, max_length=16)
+    description: str | None = Field(None, max_length=4096)
+
+
+class NodeCreate(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64)
+    type: str = Field(..., min_length=1, max_length=32)
+    name: str = Field(..., min_length=1, max_length=128)
+    host: str = Field(..., min_length=1, max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+    services: list[str] | None = None
+    kind: str | None = Field(None, max_length=64)
+    probe: bool | None = None
+    health_path: str | None = Field(None, max_length=128)
+    probe_kind: str | None = Field(None, max_length=16)
+    description: str | None = Field(None, max_length=4096)
+
+
+def _proxy_error(exc: Exception) -> HTTPException:
+    """Map urllib HTTPErrors back to the right status + detail. Anything
+    else becomes a 502 (the nodes service errored, we're a proxy)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        try:
+            body = exc.read().decode("utf-8")
+            detail = json.loads(body).get("detail", body) if body else exc.reason
+        except Exception:
+            detail = str(exc)
+        return HTTPException(status_code=exc.code, detail=detail)
+    return HTTPException(status_code=502, detail=f"nodes service: {exc}")
+
+
+@app.post("/api/nodes", status_code=201)
+async def api_create_node(req: NodeCreate) -> dict:
+    body = req.model_dump(exclude_none=True)
+    try:
+        return await nodes.create(body)
+    except Exception as exc:
+        raise _proxy_error(exc)
 
 
 @app.patch("/api/nodes/{node_id}")
 async def api_patch_node(node_id: str, req: NodePatch) -> dict:
-    """Persist edits to a node's host / port / probe-flag. The `nodes`
-    service rewrites its mounted JSON config and re-probes immediately."""
+    body = req.model_dump(exclude_none=True)
+    if not body:
+        raise HTTPException(status_code=400,
+                            detail="provide at least one field to update")
     try:
-        return await nodes.patch_one(node_id, host=req.host, port=req.port,
-                                     probe=req.probe)
-    except urllib.error.HTTPError as exc:  # type: ignore[name-defined]
-        raise HTTPException(status_code=exc.code, detail=exc.read().decode())
+        return await nodes.patch_one(node_id, body)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"nodes service: {exc}")
+        raise _proxy_error(exc)
 
 
-# Back-compat shim for the old PATCH URL. Same payload shape, routed
-# through to the unified /api/nodes PATCH.
+@app.delete("/api/nodes/{node_id}")
+async def api_delete_node(node_id: str) -> dict:
+    try:
+        return await nodes.delete(node_id)
+    except Exception as exc:
+        raise _proxy_error(exc)
+
+
+# Back-compat shim for the old PATCH URL — routed through the unified
+# /api/nodes PATCH. Same payload subset (host/port/probe). Kept so any
+# old browser session or scripted caller using /api/middlewares still
+# works. Will be removed after a deprecation window.
 @app.patch("/api/middlewares/{mw_id}")
 async def api_patch_middleware(mw_id: str, req: NodePatch) -> dict:
     return await api_patch_node(mw_id, req)

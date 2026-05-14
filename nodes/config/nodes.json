@@ -2,9 +2,12 @@
   {
     "id": "router",
     "type": "platform-node",
-    "name": "Teltonika router",
+    "name": "EdgeNode",
     "host": "192.168.201.1",
-    "services": ["ntp", "gps"],
+    "services": [
+      "ntp",
+      "gps"
+    ],
     "description": "LAN router providing NTP time and GPS NMEA push to the platform."
   },
   {
@@ -25,7 +28,7 @@
     "host": "192.168.201.152",
     "port": 14000,
     "probe": false,
-    "description": "Windows BSI Flex 335 v2 reference harness. Probing disabled because the harness logs each bare-TCP probe as a receiver error — selecting and sending is still fully functional."
+    "description": "Windows BSI Flex 335 v2 reference harness. Probing disabled because the harness logs each bare-TCP probe as a receiver error \u2014 selecting and sending is still fully functional."
   },
   {
     "id": "ui",
@@ -79,6 +82,6 @@
     "host": "127.0.0.1",
     "port": 5005,
     "probe_kind": "tcp",
-    "description": "SAPIENT → CoT → TAK fan-out. No HTTP surface; we TCP-probe the SAPIENT inbound port to confirm the container is listening."
+    "description": "SAPIENT \u2192 CoT \u2192 TAK fan-out. No HTTP surface; we TCP-probe the SAPIENT inbound port to confirm the container is listening."
   }
 ]

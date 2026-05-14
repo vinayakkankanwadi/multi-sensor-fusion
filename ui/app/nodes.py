@@ -34,14 +34,19 @@ def _http_get_json(url: str, timeout: float) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _http_patch_json(url: str, body: dict, timeout: float) -> dict:
-    data = json.dumps(body).encode("utf-8")
+def _http_send_json(url: str, body: dict, method: str, timeout: float) -> dict:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(
-        url, data=data, method="PATCH",
+        url, data=data, method=method,
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        body = resp.read()
+        return json.loads(body.decode("utf-8")) if body else {}
+
+
+def _http_patch_json(url: str, body: dict, timeout: float) -> dict:
+    return _http_send_json(url, body, "PATCH", timeout)
 
 
 async def fetch_current(type: str | None = None) -> dict:
@@ -58,15 +63,25 @@ async def fetch_current(type: str | None = None) -> dict:
         return {"config_error": f"nodes service error: {exc}", "nodes": []}
 
 
-async def patch_one(node_id: str, *, host: str | None = None,
-                    port: int | None = None,
-                    probe: bool | None = None) -> dict:
-    """PATCH `host` / `port` / `probe` on one node. The service writes
-    the change to the mounted config and re-probes immediately."""
+async def patch_one(node_id: str, body: dict) -> dict:
+    """PATCH the given fields on one node. Service validates per-type
+    and re-probes immediately. `id` and `type` are immutable and ignored
+    by the backend PATCH model."""
     base = _service_url()
-    body: dict = {}
-    if host is not None: body["host"] = host
-    if port is not None: body["port"] = port
-    if probe is not None: body["probe"] = probe
     url = f"{base}/nodes/{node_id}"
     return await asyncio.to_thread(_http_patch_json, url, body, HTTP_TIMEOUT_S)
+
+
+async def create(body: dict) -> dict:
+    """POST a new node entry. Service validates id is unique, type is
+    known, and type-specific required fields are present."""
+    base = _service_url()
+    url = f"{base}/nodes"
+    return await asyncio.to_thread(_http_send_json, url, body, "POST", HTTP_TIMEOUT_S)
+
+
+async def delete(node_id: str) -> dict:
+    """DELETE a node from the config. 404 if id unknown."""
+    base = _service_url()
+    url = f"{base}/nodes/{node_id}"
+    return await asyncio.to_thread(_http_send_json, url, None, "DELETE", HTTP_TIMEOUT_S)

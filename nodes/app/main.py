@@ -227,20 +227,112 @@ def one(node_id: str) -> dict:
     return _STATE[node_id]
 
 
-class NodePatch(BaseModel):
-    host: str | None = Field(None, min_length=1, max_length=253)
+import re
+
+# Known types: every entry's `type` must be one of these. Adding a new
+# type means adding a probe module under app/probes/ and registering it
+# in app/probes/__init__.py.
+KNOWN_TYPES = {"platform-node", "middleware", "service"}
+
+# id must be DNS-label-safe so we can use it in URL paths without
+# escaping. Same character set as a docker container name.
+_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+def _validate_id(node_id: str) -> None:
+    if not _ID_RE.match(node_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid id {node_id!r}: must be alphanumeric, dash, "
+                   "underscore; 1–64 chars; can't start with -/_",
+        )
+
+
+def _validate_type_specific(entry: dict) -> None:
+    """Each type has its own required-fields contract. Surface clear errors
+    instead of letting the probe layer fail mysteriously later."""
+    t = entry.get("type")
+    if t not in KNOWN_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown type {t!r}; must be one of {sorted(KNOWN_TYPES)}",
+        )
+    if t == "platform-node":
+        services = entry.get("services") or []
+        if not isinstance(services, list):
+            raise HTTPException(status_code=400, detail="services must be a list")
+        unknown = [s for s in services if s not in ("ntp", "gps")]
+        if unknown:
+            raise HTTPException(status_code=400,
+                                detail=f"unknown platform-node services: {unknown}")
+    elif t == "middleware":
+        if "port" not in entry:
+            raise HTTPException(status_code=400, detail="middleware requires port")
+    elif t == "service":
+        if "port" not in entry:
+            raise HTTPException(status_code=400, detail="service requires port")
+        if "health_path" not in entry and entry.get("probe_kind") != "tcp":
+            raise HTTPException(
+                status_code=400,
+                detail="service requires either health_path (HTTP probe) "
+                       "or probe_kind=\"tcp\"",
+            )
+
+
+# ---------------------------------------------------------------- POST
+
+class NodeCreate(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64)
+    type: str = Field(..., min_length=1, max_length=32)
+    name: str = Field(..., min_length=1, max_length=128)
+    host: str = Field(..., min_length=1, max_length=253)
     port: int | None = Field(None, ge=1, le=65535)
+    # Optional per-type extras — backend validates the right combo per type.
+    services: list[str] | None = None
+    kind: str | None = Field(None, max_length=64)
     probe: bool | None = None
+    health_path: str | None = Field(None, max_length=128)
+    probe_kind: str | None = Field(None, max_length=16)
+    description: str | None = Field(None, max_length=4096)
 
 
-@app.patch("/nodes/{node_id}")
-async def patch_one(node_id: str, req: NodePatch) -> dict:
-    """Edit a node's host / port / probe-flag. Persists to the mounted
-    JSON config and re-probes immediately. Same change set the old
-    msf-middlewares PATCH supported, available to every node type now."""
-    if req.host is None and req.port is None and req.probe is None:
-        raise HTTPException(status_code=400,
-                            detail="provide at least one of host, port, probe")
+@app.post("/nodes", status_code=201)
+async def create_node(req: NodeCreate) -> dict:
+    """Create a new node entry. `id` and `type` are immutable post-create
+    (changing them in flight would break probe dispatch + status keying).
+    Persists to the mounted JSON config and re-probes immediately."""
+    _validate_id(req.id)
+
+    try:
+        entries = _load_config()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"config: {exc}")
+
+    if any(e["id"] == req.id for e in entries):
+        raise HTTPException(status_code=409,
+                            detail=f"node {req.id!r} already exists")
+
+    new_entry = req.model_dump(exclude_none=True)
+    new_entry.setdefault("description", "")
+    _validate_type_specific(new_entry)
+
+    entries.append(new_entry)
+    try:
+        _save_config(entries)
+    except OSError as exc:
+        raise HTTPException(status_code=500,
+                            detail=f"write config: {exc} (is the volume rw?)")
+
+    await _refresh_round()
+    return _STATE.get(req.id, {})
+
+
+# ---------------------------------------------------------------- DELETE
+
+@app.delete("/nodes/{node_id}", status_code=200)
+async def delete_node(node_id: str) -> dict:
+    """Delete a node from the config. Re-probes immediately so the state
+    cache is consistent. Idempotent — returns 404 if the id is unknown."""
     try:
         entries = _load_config()
     except Exception as exc:
@@ -250,12 +342,61 @@ async def patch_one(node_id: str, req: NodePatch) -> dict:
     if target is None:
         raise HTTPException(status_code=404, detail=f"unknown node: {node_id}")
 
-    if req.host is not None:
-        target["host"] = req.host.strip()
-    if req.port is not None:
-        target["port"] = int(req.port)
-    if req.probe is not None:
-        target["probe"] = bool(req.probe)
+    entries = [e for e in entries if e["id"] != node_id]
+    try:
+        _save_config(entries)
+    except OSError as exc:
+        raise HTTPException(status_code=500,
+                            detail=f"write config: {exc} (is the volume rw?)")
+
+    await _refresh_round()
+    return {"removed": node_id}
+
+
+# ---------------------------------------------------------------- PATCH
+
+class NodePatch(BaseModel):
+    # `id` and `type` deliberately absent — immutable post-create.
+    name: str | None = Field(None, min_length=1, max_length=128)
+    host: str | None = Field(None, min_length=1, max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+    services: list[str] | None = None
+    kind: str | None = Field(None, max_length=64)
+    probe: bool | None = None
+    health_path: str | None = Field(None, max_length=128)
+    probe_kind: str | None = Field(None, max_length=16)
+    description: str | None = Field(None, max_length=4096)
+
+
+@app.patch("/nodes/{node_id}")
+async def patch_one(node_id: str, req: NodePatch) -> dict:
+    """Edit any field on an existing node *except* its id or type. Persists
+    to the mounted JSON config and re-probes immediately. Type-specific
+    validation runs again after the merge — illegal combinations (e.g.
+    a service without health_path or probe_kind) get rejected."""
+    updates = req.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail="provide at least one field to update",
+        )
+
+    try:
+        entries = _load_config()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"config: {exc}")
+
+    target = next((e for e in entries if e["id"] == node_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"unknown node: {node_id}")
+
+    merged = {**target, **updates}
+    # host gets whitespace-stripped (common copy/paste hazard).
+    if "host" in updates:
+        merged["host"] = str(merged["host"]).strip()
+    _validate_type_specific(merged)
+    # Write merged values back onto the original dict (preserves field order).
+    target.update(merged)
 
     try:
         _save_config(entries)

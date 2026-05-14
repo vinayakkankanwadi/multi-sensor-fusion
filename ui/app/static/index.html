@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=18">
+<link rel="stylesheet" href="/static/style.css?v=19">
 </head>
 <body>
 <header>
@@ -11,10 +11,6 @@
   <button id="nodes-toggle" class="ghost small status-toggle" aria-expanded="false"
           title="Platform nodes — NTP, GPS, …">
     <span class="label">Nodes</span>
-  </button>
-  <button id="middleware-toggle" class="ghost small status-toggle" aria-expanded="false"
-          title="SAPIENT middleware picker">
-    <span class="label">Middleware</span>
   </button>
   <button id="services-toggle" class="ghost small status-toggle" aria-expanded="false"
           title="Internal services we spin (msf-ui, msf-gps, msf-ntp, msf-nodes, msf-apex, msf-cot-bridge)">
@@ -30,16 +26,9 @@
   <div class="row drawer-header">
     <h2>Nodes</h2>
     <span id="nodes-status" class="muted small"></span>
+    <button id="add-node" class="ghost small" title="Add a new node entry">+ Add</button>
   </div>
   <div id="nodes-list" class="nodes-list"></div>
-</section>
-
-<section id="middleware-panel" class="drawer" hidden>
-  <div class="row drawer-header">
-    <h2>Middleware</h2>
-    <span id="middleware-status" class="muted small"></span>
-  </div>
-  <div id="middleware-list" class="middleware-list"></div>
 </section>
 
 <section id="services-panel" class="drawer" hidden>
@@ -172,6 +161,66 @@
   </footer>
 </section>
 
-<script src="/static/app.js?v=18"></script>
+<!-- Add/Edit Node modal — lazy-rendered, hidden by default. -->
+<div id="node-modal" class="modal" hidden>
+  <div class="modal-backdrop" data-dismiss="modal"></div>
+  <form id="node-form" class="modal-card">
+    <h3 id="node-form-title">Add Node</h3>
+    <div class="form-row">
+      <label>ID
+        <input name="id" required pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}" placeholder="e.g. tak-primary">
+        <span class="form-hint">unique; alphanumeric, dash, underscore; immutable after create</span>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Type
+        <select name="type" required>
+          <option value="">— pick a type —</option>
+          <option value="platform-node">platform-node</option>
+          <option value="middleware">middleware</option>
+        </select>
+        <span class="form-hint">determines which fields are required + which probe runs</span>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Name
+        <input name="name" required placeholder="human-readable label">
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Host
+        <input name="host" required placeholder="hostname or IP">
+      </label>
+      <label class="port-cell">Port
+        <input name="port" type="number" min="1" max="65535" placeholder="—">
+      </label>
+    </div>
+    <!-- platform-node specifics -->
+    <fieldset class="form-row platform-only">
+      <legend>Provides services</legend>
+      <label class="checkbox"><input type="checkbox" name="services" value="ntp"> NTP</label>
+      <label class="checkbox"><input type="checkbox" name="services" value="gps"> GPS</label>
+    </fieldset>
+    <!-- middleware specifics -->
+    <div class="form-row middleware-only">
+      <label>Kind
+        <input name="kind" placeholder="apex, windows-bsi-harness, …">
+      </label>
+      <label class="checkbox"><input type="checkbox" name="probe"> Probe this middleware (TCP-connect)</label>
+    </div>
+    <div class="form-row">
+      <label>Description
+        <textarea name="description" rows="2" placeholder="optional"></textarea>
+      </label>
+    </div>
+    <div class="form-row form-actions">
+      <span id="node-form-error" class="err small"></span>
+      <button type="button" class="ghost" data-dismiss="modal">Cancel</button>
+      <button type="submit" id="node-form-submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<script src="/static/app.js?v=19"></script>
 </body>
 </html>

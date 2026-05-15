@@ -55,9 +55,9 @@ listens on, even if only one is wired up by default.
 flowchart LR
     subgraph LAN["LAN — 192.168.201.0/24"]
         subgraph host["Ubuntu dev host (host networking)"]
-            UI["msf-ui<br/>FastAPI :8080<br/>(edge node)"]
-            Apex["msf-apex (Apex middleware, Trio)<br/>Child v2 :5020 · v1 :5010 · XML :5000<br/>Peer :5001 · Recorder :5003<br/>Parent in :5004 · REST :8081"]
-            CoT["msf-cot-bridge<br/>SAPIENT TCP :5005<br/>→ CoT UDP"]
+            UI["ui<br/>FastAPI :8080<br/>(edge node)"]
+            Apex["apex (Apex middleware, Trio)<br/>Child v2 :5020 · v1 :5010 · XML :5000<br/>Peer :5001 · Recorder :5003<br/>Parent in :5004 · REST :8081"]
+            CoT["cot-bridge<br/>SAPIENT TCP :5005<br/>→ CoT UDP"]
         end
         Router["192.168.201.1<br/>Teltonika router<br/>NTP · GPS NMEA push"]
         Win["192.168.201.152:14000<br/>Windows BSI Flex<br/>Test Harness (SDA)"]
@@ -97,7 +97,7 @@ UI knowing about either endpoint.
 
 ```mermaid
 flowchart TB
-    subgraph container["msf-ui (one FastAPI process)"]
+    subgraph container["ui (one FastAPI process)"]
         direction TB
         Static["static/<br/>(SPA: HTML + JS)"]
         Main["main.py<br/>FastAPI routes + lifespan"]
@@ -147,10 +147,10 @@ nursery without blocking the UI.
 sequenceDiagram
     autonumber
     participant B as Browser
-    participant UI as msf-ui
-    participant A as msf-apex<br/>(child :5020 + parent-out :5005, :14000)
+    participant UI as ui
+    participant A as apex<br/>(child :5020 + parent-out :5005, :14000)
     participant W as Windows BSI Flex<br/>(:14000)
-    participant C as msf-cot-bridge<br/>(:5005)
+    participant C as cot-bridge<br/>(:5005)
     participant T as TAK Server<br/>(:6969)
 
     B->>UI: POST /api/send<br/>{ host=127.0.0.1, port=5020, template, … }
@@ -567,7 +567,7 @@ flowchart LR
 
 ## 13. Compatibility verification against the Windows reference
 
-Behavior is locked down by the **msf-ui** at
+Behavior is locked down by the **ui** at
 [`ui/`](ui/) — a Docker-packaged web UI that drives any
 SAPIENT v2 message into a configurable host:port and inspects the wire
 conversation. To verify the middleware is wire-compatible with the Windows
@@ -578,7 +578,7 @@ reference, we point the UI's **Host** field at either:
 
 ```mermaid
 flowchart LR
-    UI["msf-ui<br/>(Docker, host networking)"]
+    UI["ui<br/>(Docker, host networking)"]
     subgraph Win["Windows reference"]
         SDA["SapientDataAgent + DmmSim"]
         PG12[("PostgreSQL 12")]
@@ -600,13 +600,13 @@ harness lived under `compat-baseline/` and has been moved to
 [`deprecated/compat-baseline/`](deprecated/compat-baseline/) — the
 captured `baselines/` artifacts and the validator quirks documented there
 are still useful as historical context. None of it is wired into active
-work; the msf-ui replaces it.
+work; the ui replaces it.
 
 ## 14. Roadmap
 
 1. **Iteration 1 — middleware** (current): TCP framer, dispatcher, registry,
    persister, forwarder, health, Postgres schema, container, compose.
-   Verification surface is the msf-ui — point it at the new
+   Verification surface is the ui — point it at the new
    middleware once running.
 2. **Iteration 2 — edge node**: a Python edge-node service that registers,
    sends status/detection/alert, accepts tasks. Replaces `SapientAsmSimulator`.

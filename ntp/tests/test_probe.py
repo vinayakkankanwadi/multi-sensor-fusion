@@ -1,6 +1,6 @@
 """NTP probe tests — offline severity logic and packet/network handling.
 
-The live-network test is opt-in (skipped unless `MSF_NTP_LIVE=1`).
+The live-network test is opt-in (skipped unless `NTP_LIVE=1`).
 """
 
 from __future__ import annotations
@@ -86,8 +86,8 @@ def test_query_returns_offset_for_synthetic_in_sync_server(monkeypatch):
     assert abs(res.offset_s) < 0.5
 
 
-@pytest.mark.skipif(os.environ.get("MSF_NTP_LIVE") != "1",
-                    reason="set MSF_NTP_LIVE=1 to run live NTP query")
+@pytest.mark.skipif(os.environ.get("NTP_LIVE") != "1",
+                    reason="set NTP_LIVE=1 to run live NTP query")
 def test_live_ntp_query_succeeds_and_clock_in_bounds():
     res = asyncio.run(ntp.query("pool.ntp.org", timeout=3.0))
     assert res.ok, res.error

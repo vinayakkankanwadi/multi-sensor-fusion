@@ -1,5 +1,5 @@
 """platform-node probe — composes per-service health (NTP, GPS) from the
-external service-of-record (msf-ntp + msf-gps) into one rolled-up status.
+external service-of-record (ntp + gps) into one rolled-up status.
 
 A platform node is an upstream host that *provides* services to the rest
 of the stack (today: the router, which serves both NTP and GPS NMEA).
@@ -21,7 +21,7 @@ def _ntp_status_for_host(host: str, ntp_sources: dict) -> dict:
     entry = (ntp_sources or {}).get("results", {}).get(host)
     if entry is None:
         return {"ok": False, "severity": "unknown",
-                "error": f"host {host!r} not in msf-ntp's configured servers"}
+                "error": f"host {host!r} not in ntp's configured servers"}
     return {
         "ok": bool(entry.get("ok")),
         "severity": entry.get("severity") or "unknown",
@@ -34,7 +34,7 @@ def _ntp_status_for_host(host: str, ntp_sources: dict) -> dict:
 
 def _gps_status_for_host(host: str, gps_fix: dict) -> dict:
     if not gps_fix:
-        return {"ok": False, "severity": "unknown", "error": "msf-gps unreachable"}
+        return {"ok": False, "severity": "unknown", "error": "gps unreachable"}
     source = (gps_fix.get("source") or "")
     seen_from = None
     if "from " in source:
@@ -58,7 +58,7 @@ def _gps_status_for_host(host: str, gps_fix: dict) -> dict:
 
 async def probe(entry: dict, ctx: dict) -> dict:
     """Aggregate per-service health for this entry. `ctx` carries the
-    pre-fetched msf-ntp `/ntp/sources` payload and msf-gps `/gps/current`
+    pre-fetched ntp `/ntp/sources` payload and gps `/gps/current`
     payload — fetching them is the orchestrator's job, this stays pure."""
     services: dict[str, dict] = {}
     for kind in entry.get("services", []):

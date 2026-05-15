@@ -626,9 +626,10 @@ async function loadNodes() {
   // type lists client-side.
   const platform = await _fetchByType("platform-node");
   const middleware = await _fetchByType("middleware");
-  nodeList = [...platform.nodes, ...middleware.nodes];
+  const tak = await _fetchByType("tak-server");
+  nodeList = [...platform.nodes, ...middleware.nodes, ...tak.nodes];
 
-  const cfgErr = platform.config_error || middleware.config_error;
+  const cfgErr = platform.config_error || middleware.config_error || tak.config_error;
   const status = $("#nodes-status");
   if (cfgErr) {
     status.textContent = `service: ${cfgErr}`;
@@ -659,9 +660,14 @@ async function loadNodes() {
   applyToggleSeverity(
     "nodes-toggle",
     worstSeverity(
-      // Skip entries deliberately not probed (probe:false middlewares) —
-      // they'd always be "unknown" and would drag the badge yellow forever.
-      nodeList.filter((n) => !(n.type === "middleware" && n.probe === false)),
+      // Skip entries deliberately not probed: middleware with probe:false,
+      // and tak-server entries without an admin_port (UDP-only by design,
+      // always unknown). Otherwise the badge would be stuck at warn/unknown.
+      nodeList.filter((n) => {
+        if (n.type === "middleware" && n.probe === false) return false;
+        if (n.type === "tak-server" && n.probe_kind !== "tcp") return false;
+        return true;
+      }),
       (n) => n.severity,
     ),
   );
@@ -726,11 +732,17 @@ function renderNodeList() {
       secondaryHtml = `<span class="svcs">${chips}</span>`;
       titleStr = _platformNodeServicesTooltip(n);
     } else if (n.type === "middleware") {
-      const probeBadge = n.probe === false
-        ? `<span class="muted small">probe: off</span>`
-        : "";
-      secondaryHtml = `<span class="kind muted small">${n.kind || "—"}</span> ${probeBadge}`;
+      // The `probe` flag is still editable in the modal, but we don't
+      // surface it in the row — it's noise for the common case (probe
+      // on), and the dot already reflects status correctly.
+      secondaryHtml = `<span class="kind muted small">${n.kind || "—"}</span>`;
       titleStr = _middlewareTooltip(n);
+    } else if (n.type === "tak-server") {
+      const proto = (n.protocol || "udp").toUpperCase();
+      const s = n.status || {};
+      secondaryHtml = `<span class="kind muted small">${proto}</span>`;
+      titleStr = `${n.name}\n${n.host}:${n.port} (${proto})` +
+                 (s.error ? `\n${s.error}` : "");
     } else {
       secondaryHtml = `<span class="muted small">${n.type}</span>`;
       titleStr = `${n.name} · ${n.host}${n.port ? `:${n.port}` : ""}`;

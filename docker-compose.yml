@@ -17,14 +17,14 @@
 #                  latest GPS fix over HTTP at :8090/gps/current. Single
 #                  source of truth for platform position.
 #   ntp            Multi-source NTP probe. Polls every server in
-#                  MSF_NTP_SERVERS, exposes the voted offset/severity at
+#                  NTP_SERVERS, exposes the voted offset/severity at
 #                  :8091/ntp/current.
 #   nodes          Unified registry + status for every named platform
 #                  resource. Each config entry has a `type` (platform-node,
 #                  middleware, future tak-server / edge-node / fusion-node)
 #                  and a type-dispatched probe strategy. Exposes
 #                  :8093/nodes/current (optionally ?type=…). Replaces the
-#                  old split into msf-nodes + msf-middlewares — both moved
+#                  old split into nodes + middlewares — both moved
 #                  to deprecated/.
 #   apex           Real SAPIENT middleware (Python, Trio-based).
 #                  Child ports 5020/5010/5000, Peer 5001, Recorder 5003,
@@ -32,7 +32,7 @@
 #                  Outbound Parent forwardAll to cot-bridge (5005) and to
 #                  the Windows BSI Flex harness on the LAN if present.
 #   cot-bridge     SAPIENT → CoT → TAK fan-out. Accepts SAPIENT TCP on
-#                  5005, UDP-sends CoT XML to MSF_TAK_HOST:MSF_TAK_PORT.
+#                  5005, UDP-sends CoT XML to TAK_HOST:TAK_PORT.
 #
 # Run from this directory:
 #   ./scripts/build.sh           # builds proto bindings + every service
@@ -50,62 +50,62 @@ services:
       context: ./libs/sapient-proto
       additional_contexts:
         proto-src: ./SAPIENT-Proto-Files
-    image: msf-sapient-proto:latest
+    image: sapient-proto:latest
 
   ui:
     build:
       context: ./ui
       dockerfile: Dockerfile
       additional_contexts:
-        proto-bindings: docker-image://msf-sapient-proto:latest
+        proto-bindings: docker-image://sapient-proto:latest
         sapient-wire:   ./libs/sapient-wire
-    image: msf-ui:latest
-    container_name: msf-ui
+    image: ui:latest
+    container_name: ui
     network_mode: host
     environment:
       # GPS, NTP, and the unified nodes service each live in their own
       # container; UI polls over HTTP rather than owning any of them
       # directly. /api/middlewares is now a filtered view of /api/nodes
       # (no separate URL — same service, ?type=middleware).
-      MSF_GPS_URL:   "http://127.0.0.1:8090"
-      MSF_NTP_URL:   "http://127.0.0.1:8091"
-      MSF_NODES_URL: "http://127.0.0.1:8093"
+      GPS_URL:   "http://127.0.0.1:8090"
+      NTP_URL:   "http://127.0.0.1:8091"
+      NODES_URL: "http://127.0.0.1:8093"
     volumes:
       - ./ui/templates:/app/templates
       - ./ui/runs:/app/runs
     restart: unless-stopped
 
   gps:
-    # NMEA-over-UDP aggregator. Owns UDP/MSF_NMEA_PORT (default 8500) and
+    # NMEA-over-UDP aggregator. Owns UDP/NMEA_PORT (default 8500) and
     # exposes the latest fix to other services over HTTP. Single source of
     # truth for "what does the platform think its GPS position is" — the
     # UI, fusion node, and any future consumer all read /gps/current here.
     build:
       context: ./gps
       dockerfile: Dockerfile
-    image: msf-gps:latest
-    container_name: msf-gps
+    image: gps:latest
+    container_name: gps
     network_mode: host
     environment:
-      MSF_NMEA_BIND: "0.0.0.0"
-      MSF_NMEA_PORT: "8500"
+      NMEA_BIND: "0.0.0.0"
+      NMEA_PORT: "8500"
     restart: unless-stopped
 
   ntp:
-    # Multi-source NTP probe. Polls every server in MSF_NTP_SERVERS on a
+    # Multi-source NTP probe. Polls every server in NTP_SERVERS on a
     # fixed cadence and exposes the voted offset/severity at /ntp/current.
     # Centralises the cadence (no N consumers × M servers fan-out) and
     # gives us one canonical "what's our clock drift" answer.
     build:
       context: ./ntp
       dockerfile: Dockerfile
-    image: msf-ntp:latest
-    container_name: msf-ntp
+    image: ntp:latest
+    container_name: ntp
     network_mode: host
     environment:
-      MSF_NTP_SERVERS:   "192.168.201.1,pool.ntp.org"
-      MSF_NTP_INTERVAL_S: "30"
-      MSF_NTP_TIMEOUT_S:  "2"
+      NTP_SERVERS:   "192.168.201.1,pool.ntp.org"
+      NTP_INTERVAL_S: "30"
+      NTP_TIMEOUT_S:  "2"
     restart: unless-stopped
 
   nodes:
@@ -113,22 +113,22 @@ services:
     # platform: the router (type=platform-node, NTP+GPS aggregator), SAPIENT
     # endpoints (type=middleware, TCP probe), and any future type plug-in
     # (type=tak-server, =edge-node, =fusion-node, …). Replaces the old
-    # split into msf-nodes + msf-middlewares; both now sit under
+    # split into nodes + middlewares; both now sit under
     # deprecated/. The UI's two drawers consume filtered views of the
     # same /nodes/current endpoint.
     build:
       context: ./nodes
       dockerfile: Dockerfile
-    image: msf-nodes:latest
-    container_name: msf-nodes
+    image: nodes:latest
+    container_name: nodes
     network_mode: host
     environment:
-      MSF_NODES_CONFIG:     "/app/config/nodes.json"
+      NODES_CONFIG:     "/app/config/nodes.json"
       # Default 60s — gentle enough that SAPIENT endpoints don't log each
       # bare TCP-connect-then-close as a receiver error. Override at will.
-      MSF_NODES_INTERVAL_S: "60"
-      MSF_NTP_URL:          "http://127.0.0.1:8091"
-      MSF_GPS_URL:          "http://127.0.0.1:8090"
+      NODES_INTERVAL_S: "60"
+      NTP_URL:          "http://127.0.0.1:8091"
+      GPS_URL:          "http://127.0.0.1:8090"
     volumes:
       # Live-edit the node list without rebuilding the image. Read-write
       # so PATCH /nodes/{id} can persist host/port/probe changes typed
@@ -142,8 +142,8 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         apex-src: ./Apex-SAPIENT-Middleware
-    image: msf-apex:latest
-    container_name: msf-apex
+    image: apex:latest
+    container_name: apex
     network_mode: host
     volumes:
       # Live-edit the LAN config without rebuilding the image.
@@ -160,21 +160,21 @@ services:
       context: ./cot-bridge
       dockerfile: Dockerfile
       additional_contexts:
-        proto-bindings: docker-image://msf-sapient-proto:latest
+        proto-bindings: docker-image://sapient-proto:latest
         sapient-wire:   ./libs/sapient-wire
         sapient-to-cot: ./libs/sapient-to-cot
-    image: msf-cot-bridge:latest
-    container_name: msf-cot-bridge
+    image: cot-bridge:latest
+    container_name: cot-bridge
     network_mode: host
     environment:
-      MSF_COT_BRIDGE_BIND:  "0.0.0.0"
-      MSF_COT_BRIDGE_PORT:  "5005"
-      MSF_TAK_HOST:         "192.168.201.222"
-      MSF_TAK_PORT:         "6969"
+      COT_BRIDGE_BIND:  "0.0.0.0"
+      COT_BRIDGE_PORT:  "5005"
+      TAK_HOST:         "192.168.201.222"
+      TAK_PORT:         "6969"
       # Fallback position for SAPIENT messages without a Location (e.g.
       # Registration). Pick a sensible Brisbane reference. Once GPS is
       # wired in, this becomes a last-resort default.
-      MSF_FALLBACK_LAT:     "-27.4698"
-      MSF_FALLBACK_LON:     "153.0251"
-      MSF_FALLBACK_ALT:     "27.0"
+      FALLBACK_LAT:     "-27.4698"
+      FALLBACK_LON:     "153.0251"
+      FALLBACK_ALT:     "27.0"
     restart: unless-stopped

@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.6
 #
-# msf-sapient-proto — build-only image that holds the generated Python
+# sapient-proto — build-only image that holds the generated Python
 # bindings for SAPIENT BSI Flex 335 v2. The image's only job is to be a
 # COPY source for the runtime services. It is never `compose up`'d.
 #
 # Consumers (ui, cot-bridge) reference it via:
 #
 #     additional_contexts:
-#       proto-bindings: docker-image://msf-sapient-proto:latest
+#       proto-bindings: docker-image://sapient-proto:latest
 #
 # and then `COPY --from=proto-bindings /sapient_msg /app/sapient_msg`.
 #

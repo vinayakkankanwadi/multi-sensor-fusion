@@ -1,7 +1,7 @@
 """Composite clock probe.
 
 Returns three times in one shot:
-  - NTP server time   (via app.ntp; defaults to MSF_NTP_SERVER, e.g. the LAN router)
+  - NTP server time   (via app.ntp; defaults to NTP_SERVER, e.g. the LAN router)
   - Local container clock (== host clock, since the container shares the kernel)
   - Windows harness clock (extracted from a SAPIENT RegistrationAck timestamp)
 
@@ -62,7 +62,7 @@ def local_clock(label: str = "local (container/host)") -> ClockSample:
 
 async def ntp_clock(server: str | None = None,
                     timeout: float = 2.0) -> ClockSample:
-    srv = server or os.environ.get("MSF_NTP_SERVER", ntp.DEFAULT_SERVER)
+    srv = server or os.environ.get("NTP_SERVER", ntp.DEFAULT_SERVER)
     t0 = time.time()
     res = await ntp.query(server=srv, timeout=timeout)
     t1 = time.time()

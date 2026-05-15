@@ -24,11 +24,11 @@ def client(tmp_path, monkeypatch):
         {"id": "mw1", "type": "middleware", "name": "MW1",
          "host": "127.0.0.1", "port": 5020, "probe": True, "kind": "apex"},
     ]))
-    monkeypatch.setenv("MSF_NODES_CONFIG", str(cfg))
-    # nodes service polls msf-ntp/msf-gps; stub the URLs so we don't hit them.
-    monkeypatch.setenv("MSF_NTP_URL", "http://127.0.0.1:1")
-    monkeypatch.setenv("MSF_GPS_URL", "http://127.0.0.1:1")
-    monkeypatch.setenv("MSF_NODES_INTERVAL_S", "999999")  # disable poll loop
+    monkeypatch.setenv("NODES_CONFIG", str(cfg))
+    # nodes service polls ntp/gps; stub the URLs so we don't hit them.
+    monkeypatch.setenv("NTP_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("GPS_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("NODES_INTERVAL_S", "999999")  # disable poll loop
     from app.main import app
     with TestClient(app) as c:
         yield c, cfg

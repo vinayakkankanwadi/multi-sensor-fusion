@@ -99,7 +99,7 @@ def _location_from(loc) -> tuple[float, float, float] | None:
     # Both x/y must be present; in the v2 SAPIENT location.proto, x=longitude or
     # easting depending on coordinate_system, y=latitude or northing. For this
     # converter we treat LAT_LNG_DEG_M (the most common over-the-wire choice
-    # for the msf-ui's templates) as x=lat, y=lon — match what the
+    # for the ui's templates) as x=lat, y=lon — match what the
     # template_loader uses.
     if not loc.HasField("x") or not loc.HasField("y"):
         return None

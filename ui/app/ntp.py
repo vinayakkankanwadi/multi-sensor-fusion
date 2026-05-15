@@ -1,12 +1,12 @@
-"""NTP accessor — thin HTTP client to the msf-ntp service.
+"""NTP accessor — thin HTTP client to the ntp service.
 
-The actual UDP probe lives in msf-ntp, which polls one-or-more NTP
+The actual UDP probe lives in ntp, which polls one-or-more NTP
 servers and exposes a voted answer over HTTP. The UI just asks
 `GET /ntp/current` and shapes the result into the same `NtpResult`
 the rest of the UI already speaks.
 
 Configure via:
-    MSF_NTP_URL  base URL of the ntp service (default http://127.0.0.1:8091)
+    NTP_URL  base URL of the ntp service (default http://127.0.0.1:8091)
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ HTTP_TIMEOUT_S = 1.5
 # in-UI math (e.g. badge colour) doesn't need an HTTP round-trip.
 WARN_THRESHOLD_S = 0.5
 FAIL_THRESHOLD_S = 2.0
-DEFAULT_SERVER = "msf-ntp"  # cosmetic — label, not a hostname
+DEFAULT_SERVER = "ntp"  # cosmetic — label, not a hostname
 DEFAULT_TIMEOUT_S = 2.0     # kept for /api/ntp?timeout= compat
 
 
@@ -61,7 +61,7 @@ def _http_get_json(url: str, timeout: float) -> dict:
 
 
 def _service_url() -> str:
-    return os.environ.get("MSF_NTP_URL", DEFAULT_NTP_URL).rstrip("/")
+    return os.environ.get("NTP_URL", DEFAULT_NTP_URL).rstrip("/")
 
 
 def _result_from_dict(d: dict, label: str) -> NtpResult:
@@ -78,11 +78,11 @@ def _result_from_dict(d: dict, label: str) -> NtpResult:
 async def query(server: str | None = None,
                 port: int | None = None,
                 timeout: float = DEFAULT_TIMEOUT_S) -> NtpResult:
-    """Fetch the voted offset from msf-ntp. `server` is accepted only for
+    """Fetch the voted offset from ntp. `server` is accepted only for
     backwards compatibility with callers that used to name an NTP host;
-    the UI now delegates source selection to the msf-ntp service."""
+    the UI now delegates source selection to the ntp service."""
     base = _service_url()
-    label = server or f"msf-ntp ({base})"
+    label = server or f"ntp ({base})"
     url = f"{base}/ntp/current"
     try:
         data = await asyncio.to_thread(_http_get_json, url, HTTP_TIMEOUT_S)

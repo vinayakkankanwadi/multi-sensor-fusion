@@ -1,5 +1,5 @@
-"""service probe — health-check the containers we spin (msf-ui, msf-gps,
-msf-ntp, msf-nodes, msf-apex, msf-cot-bridge, …).
+"""service probe — health-check the containers we spin (ui, gps,
+ntp, nodes, apex, cot-bridge, …).
 
 A `service` entry in nodes.json describes one of our own containers. Two
 probe modes, picked by entry fields:

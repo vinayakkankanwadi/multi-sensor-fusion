@@ -1,6 +1,6 @@
-"""msf-gps — NMEA-over-UDP aggregator service.
+"""gps — NMEA-over-UDP aggregator service.
 
-Owns UDP/MSF_NMEA_PORT (default 8500) and aggregates incoming NMEA from
+Owns UDP/NMEA_PORT (default 8500) and aggregates incoming NMEA from
 one or more upstream sources (router-pushed today; drone-borne GPS over
 SAPIENT detections planned). Every consumer (UI, future fusion node, …)
 asks this service for the current fix via HTTP — there is exactly one
@@ -19,7 +19,7 @@ from .listener import DEFAULT_BIND, DEFAULT_PORT, NmeaListener
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
-log = logging.getLogger("msf-gps")
+log = logging.getLogger("gps")
 
 listener: NmeaListener | None = None
 
@@ -27,18 +27,18 @@ listener: NmeaListener | None = None
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     global listener
-    port = int(os.environ.get("MSF_NMEA_PORT", str(DEFAULT_PORT)))
-    bind = os.environ.get("MSF_NMEA_BIND", DEFAULT_BIND)
+    port = int(os.environ.get("NMEA_PORT", str(DEFAULT_PORT)))
+    bind = os.environ.get("NMEA_BIND", DEFAULT_BIND)
     listener = NmeaListener(port=port, bind=bind)
     await listener.start()
-    log.info("msf-gps startup complete (NMEA on %s:%d)", bind, port)
+    log.info("gps startup complete (NMEA on %s:%d)", bind, port)
     try:
         yield
     finally:
         await listener.stop()
 
 
-app = FastAPI(title="msf-gps",
+app = FastAPI(title="gps",
               version="1",
               description="NMEA-over-UDP listener with HTTP read API for the latest GPS fix.",
               lifespan=_lifespan)

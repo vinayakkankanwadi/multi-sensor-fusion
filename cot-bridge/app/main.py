@@ -11,13 +11,13 @@ client, watch CoT come out on the wire. Once it's proven, Apex's
 `Parent forwardAll` connection points at this service on :5005.
 
 Environment:
-    MSF_COT_BRIDGE_BIND     listen address (default 0.0.0.0)
-    MSF_COT_BRIDGE_PORT     listen port    (default 5005)
-    MSF_TAK_HOST            TAK Server UDP host
-    MSF_TAK_PORT            TAK Server UDP port (default 6969)
-    MSF_FALLBACK_LAT        fallback latitude for messages without Location
-    MSF_FALLBACK_LON        fallback longitude
-    MSF_FALLBACK_ALT        fallback altitude (m, default 0.0)
+    COT_BRIDGE_BIND     listen address (default 0.0.0.0)
+    COT_BRIDGE_PORT     listen port    (default 5005)
+    TAK_HOST            TAK Server UDP host
+    TAK_PORT            TAK Server UDP port (default 6969)
+    FALLBACK_LAT        fallback latitude for messages without Location
+    FALLBACK_LON        fallback longitude
+    FALLBACK_ALT        fallback altitude (m, default 0.0)
 """
 
 from __future__ import annotations
@@ -50,13 +50,13 @@ def _env_float(name: str) -> Optional[float]:
         return None
 
 
-BIND      = os.environ.get("MSF_COT_BRIDGE_BIND", "0.0.0.0")
-PORT      = int(os.environ.get("MSF_COT_BRIDGE_PORT", "5005"))
-TAK_HOST  = os.environ.get("MSF_TAK_HOST", "192.168.201.222")
-TAK_PORT  = int(os.environ.get("MSF_TAK_PORT", "6969"))
-FB_LAT    = _env_float("MSF_FALLBACK_LAT")
-FB_LON    = _env_float("MSF_FALLBACK_LON")
-FB_ALT    = _env_float("MSF_FALLBACK_ALT") or 0.0
+BIND      = os.environ.get("COT_BRIDGE_BIND", "0.0.0.0")
+PORT      = int(os.environ.get("COT_BRIDGE_PORT", "5005"))
+TAK_HOST  = os.environ.get("TAK_HOST", "192.168.201.222")
+TAK_PORT  = int(os.environ.get("TAK_PORT", "6969"))
+FB_LAT    = _env_float("FALLBACK_LAT")
+FB_LON    = _env_float("FALLBACK_LON")
+FB_ALT    = _env_float("FALLBACK_ALT") or 0.0
 
 
 _stats = {
@@ -76,7 +76,7 @@ def _convert_and_send(msg: _msg.SapientMessage) -> None:
     if xml is None:
         if content in ("registration", "status_report", "detection_report", "alert"):
             _stats["skipped_no_position"] += 1
-            log.info("skipped %s (no position; set MSF_FALLBACK_LAT/LON or include Location)",
+            log.info("skipped %s (no position; set FALLBACK_LAT/LON or include Location)",
                      content)
         else:
             _stats["skipped_no_mapping"] += 1

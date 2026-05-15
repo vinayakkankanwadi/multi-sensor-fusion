@@ -3,10 +3,10 @@
 The platform-resource registry (every named host: router, SAPIENT
 middlewares, future TAK servers / edge / fusion nodes) lives in one
 service now. The UI asks `GET /nodes/current?type=…` for filtered views;
-the previous split into msf-nodes + msf-middlewares has been retired.
+the previous split into nodes + middlewares has been retired.
 
 Configure via:
-    MSF_NODES_URL  base URL of the service (default http://127.0.0.1:8093)
+    NODES_URL  base URL of the service (default http://127.0.0.1:8093)
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ HTTP_TIMEOUT_S = 1.5
 
 
 def _service_url() -> str:
-    return os.environ.get("MSF_NODES_URL", DEFAULT_URL).rstrip("/")
+    return os.environ.get("NODES_URL", DEFAULT_URL).rstrip("/")
 
 
 def _http_get_json(url: str, timeout: float) -> dict:

@@ -1,6 +1,6 @@
-"""msf-ntp — multi-source NTP probe service.
+"""ntp — multi-source NTP probe service.
 
-Periodically polls every NTP server in `MSF_NTP_SERVERS` (comma-separated,
+Periodically polls every NTP server in `NTP_SERVERS` (comma-separated,
 default `pool.ntp.org`), and exposes:
 
     GET /ntp/current   the voted answer (median offset over reachable
@@ -31,7 +31,7 @@ from .probe import FAIL_THRESHOLD_S, WARN_THRESHOLD_S, NtpResult, query
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
-log = logging.getLogger("msf-ntp")
+log = logging.getLogger("ntp")
 
 DEFAULT_SERVERS = ["pool.ntp.org"]
 DEFAULT_INTERVAL_S = 30.0
@@ -134,11 +134,11 @@ async def _poll_loop() -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     global _SERVERS, _INTERVAL_S, _TIMEOUT_S, _POLL_TASK
-    raw = os.environ.get("MSF_NTP_SERVERS", ",".join(DEFAULT_SERVERS))
+    raw = os.environ.get("NTP_SERVERS", ",".join(DEFAULT_SERVERS))
     _SERVERS = [s.strip() for s in raw.split(",") if s.strip()]
-    _INTERVAL_S = float(os.environ.get("MSF_NTP_INTERVAL_S", DEFAULT_INTERVAL_S))
-    _TIMEOUT_S = float(os.environ.get("MSF_NTP_TIMEOUT_S", DEFAULT_TIMEOUT_S))
-    log.info("msf-ntp starting: servers=%s interval=%ss timeout=%ss",
+    _INTERVAL_S = float(os.environ.get("NTP_INTERVAL_S", DEFAULT_INTERVAL_S))
+    _TIMEOUT_S = float(os.environ.get("NTP_TIMEOUT_S", DEFAULT_TIMEOUT_S))
+    log.info("ntp starting: servers=%s interval=%ss timeout=%ss",
              _SERVERS, _INTERVAL_S, _TIMEOUT_S)
     # Probe once up front so /ntp/current has a real answer before the
     # first interval expires.
@@ -158,7 +158,7 @@ async def _lifespan(app: FastAPI):
                 pass
 
 
-app = FastAPI(title="msf-ntp",
+app = FastAPI(title="ntp",
               version="1",
               description="Multi-source NTP probe with HTTP read API.",
               lifespan=_lifespan)

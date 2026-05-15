@@ -45,7 +45,7 @@ async def _lifespan(app: FastAPI):
         await gps.stop_listener()
 
 
-app = FastAPI(title="msf-ui",
+app = FastAPI(title="ui",
               version="3",
               description="Send any SAPIENT BSI Flex 335 v2 templated message to a configurable endpoint.",
               lifespan=_lifespan)
@@ -329,7 +329,7 @@ def api_clear_runs() -> dict:
 
 @app.get("/api/ntp")
 async def api_ntp(server: str | None = None, timeout: float = 2.0) -> dict:
-    srv = server or os.environ.get("MSF_NTP_SERVER", ntp.DEFAULT_SERVER)
+    srv = server or os.environ.get("NTP_SERVER", ntp.DEFAULT_SERVER)
     result = await ntp.query(server=srv, timeout=timeout)
     return result.to_dict()
 
@@ -366,6 +366,8 @@ class NodePatch(BaseModel):
     probe: bool | None = None
     health_path: str | None = Field(None, max_length=128)
     probe_kind: str | None = Field(None, max_length=16)
+    admin_port: int | None = Field(None, ge=1, le=65535)
+    protocol: str | None = Field(None, max_length=16)
     description: str | None = Field(None, max_length=4096)
 
 
@@ -380,6 +382,8 @@ class NodeCreate(BaseModel):
     probe: bool | None = None
     health_path: str | None = Field(None, max_length=128)
     probe_kind: str | None = Field(None, max_length=16)
+    admin_port: int | None = Field(None, ge=1, le=65535)
+    protocol: str | None = Field(None, max_length=16)
     description: str | None = Field(None, max_length=4096)
 
 

@@ -33,7 +33,7 @@
   {
     "id": "ui",
     "type": "service",
-    "name": "msf-ui",
+    "name": "ui",
     "host": "127.0.0.1",
     "port": 8080,
     "health_path": "/api/health",
@@ -42,7 +42,7 @@
   {
     "id": "gps",
     "type": "service",
-    "name": "msf-gps",
+    "name": "gps",
     "host": "127.0.0.1",
     "port": 8090,
     "health_path": "/health",
@@ -51,16 +51,16 @@
   {
     "id": "ntp",
     "type": "service",
-    "name": "msf-ntp",
+    "name": "ntp",
     "host": "127.0.0.1",
     "port": 8091,
     "health_path": "/health",
-    "description": "Multi-source NTP probe. Polls every server in MSF_NTP_SERVERS and exposes the voted offset."
+    "description": "Multi-source NTP probe. Polls every server in NTP_SERVERS and exposes the voted offset."
   },
   {
     "id": "nodes-self",
     "type": "service",
-    "name": "msf-nodes",
+    "name": "nodes",
     "host": "127.0.0.1",
     "port": 8093,
     "health_path": "/health",
@@ -69,7 +69,7 @@
   {
     "id": "apex-rest",
     "type": "service",
-    "name": "msf-apex (REST)",
+    "name": "apex (REST)",
     "host": "127.0.0.1",
     "port": 8081,
     "health_path": "/",
@@ -78,10 +78,19 @@
   {
     "id": "cot-bridge",
     "type": "service",
-    "name": "msf-cot-bridge",
+    "name": "cot-bridge",
     "host": "127.0.0.1",
     "port": 5005,
     "probe_kind": "tcp",
     "description": "SAPIENT \u2192 CoT \u2192 TAK fan-out. No HTTP surface; we TCP-probe the SAPIENT inbound port to confirm the container is listening."
+  },
+  {
+    "id": "tak-primary",
+    "type": "tak-server",
+    "name": "TAK Server",
+    "host": "192.168.201.222",
+    "port": 6969,
+    "protocol": "udp",
+    "description": "TAK Server CoT ingest. cot-bridge UDP-sends here. Status is 'unknown' by design \u2014 UDP has no handshake. Add probe_kind=tcp + admin_port (e.g. 8089) to TCP-probe the TAK admin port instead."
   }
 ]

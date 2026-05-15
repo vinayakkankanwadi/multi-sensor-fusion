@@ -4,7 +4,7 @@ Requires the SAPIENT v2 proto bindings to be importable as
 `sapient_msg.bsi_flex_335_v2_0`. The simplest way to run these is inside
 the cot-bridge container (bindings are generated at build time):
 
-    docker exec msf-cot-bridge python -m pytest /app/sapient_to_cot
+    docker exec cot-bridge python -m pytest /app/sapient_to_cot
 
 On the host you need a venv with the bindings on PYTHONPATH —
 [`cot-bridge/Dockerfile`](../../cot-bridge/Dockerfile) shows how those

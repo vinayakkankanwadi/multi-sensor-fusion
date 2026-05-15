@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Headless test of msf-ui — drives every UI flow over HTTP.
+# Headless test of ui — drives every UI flow over HTTP.
 set -euo pipefail
 BASE="http://localhost:8080"
 

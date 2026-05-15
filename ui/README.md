@@ -1,4 +1,4 @@
-# msf-ui
+# ui
 
 A Docker-packaged web UI for sending any SAPIENT BSI Flex 335 v2 message
 template to a configurable IP/port and inspecting the wire conversation.
@@ -92,7 +92,7 @@ SAPIENT v2 .proto descriptors plus a small "validator quirks" table
 (`app/proto_to_template.py`). To rebuild:
 
 ```bash
-docker exec msf-ui python -m app.proto_to_template --out /app/templates
+docker exec ui python -m app.proto_to_template --out /app/templates
 ```
 
 Or click **Regenerate templates from .proto** in the UI top bar.
@@ -122,7 +122,7 @@ JSON-driven workflow can use it.
 
 The UI listens for NMEA-over-UDP push from a router that supports NMEA
 forwarding (e.g. a Teltonika RutOS box configured to push GNSS sentences
-to a UDP target). The container binds `MSF_NMEA_BIND:MSF_NMEA_PORT`
+to a UDP target). The container binds `NMEA_BIND:NMEA_PORT`
 (default `0.0.0.0:8500`) at startup, parses every supported sentence
 (GGA / RMC / GLL / GNS — multi-GNSS), and exposes the most recent fix in
 the Clock-sync panel **and** as the `{{GPS_LAT}}`, `{{GPS_LON}}`,
@@ -162,7 +162,7 @@ and for spotting prefixes the parser had to strip.
 ## Step-by-step: NTP sync check
 
 The header carries a small `ntp:` badge that pings `pool.ntp.org` (override
-with `MSF_NTP_SERVER` env var) and shows the local clock offset. Spec §4.1
+with `NTP_SERVER` env var) and shows the local clock offset. Spec §4.1
 requires NTP-synced clocks; the harness validators fail unhelpfully if your
 machine is more than a couple seconds off.
 
@@ -207,7 +207,7 @@ Unit tests live in `tests/` and are baked into the image so they can run
 inside the container without a venv:
 
 ```bash
-docker exec msf-ui pytest /app/tests -q     # 37 passed, 1 skipped
+docker exec ui pytest /app/tests -q     # 37 passed, 1 skipped
 ```
 
 Coverage:
@@ -217,7 +217,7 @@ Coverage:
 | `tests/test_framer.py` | spec §4.2 length-prefix codec, async + truncation |
 | `tests/test_proto_to_template.py` | converter generates one template per content case; each parses back; each passes the client-side validator; quirks (`icd_version`, `mode`, `concurrent_tasks`) are present |
 | `tests/test_validators.py` | every per-message validator catches its known mandatory-field violations |
-| `tests/test_ntp.py` | severity classification, short-reply / network-error handling, synthetic in-sync server. Set `MSF_NTP_LIVE=1` to also hit a real server. |
+| `tests/test_ntp.py` | severity classification, short-reply / network-error handling, synthetic in-sync server. Set `NTP_LIVE=1` to also hit a real server. |
 
 ## End-to-end UI test
 
@@ -266,6 +266,6 @@ mapping is needed. If port 8080 is taken on your host, change the
 |---|---|
 | `connect failed: [Errno 113] No route to host` | The target IP is unreachable. Check it with `ping` from the host (the container shares the host network stack). |
 | `connect failed: [Errno 111] Connection refused` | Target port has no listener. Confirm the harness is running. |
-| Template not appearing in the sidebar | Reload the browser — `/api/templates` is read on each load. If still missing, `docker logs msf-ui` will show JSON parse errors. |
+| Template not appearing in the sidebar | Reload the browser — `/api/templates` is read on each load. If still missing, `docker logs ui` will show JSON parse errors. |
 | `template parse failed: ...` on send | The JSON doesn't match the `SapientMessage` schema. Common cause: invalid enum spelling. |
 | Harness sends back an `error` reply | Validator rejected the message. The error transcript will list the specific FluentValidation failures. See `deprecated/compat-baseline/edge-sim/driver/builders.py` for known-good builders that pass the reference validators. |

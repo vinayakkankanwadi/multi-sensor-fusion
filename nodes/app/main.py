@@ -7,11 +7,11 @@ an edge / fusion node (`edge-node` / `fusion-node`, future). The shape is
 the same for all of them — `{id, type, name, host, …, status, severity}`
 — and each type plugs in its own probe strategy under `app.probes.*`.
 
-This service replaces the older split into `msf-nodes` (platform health)
-and `msf-middlewares` (SAPIENT endpoints). Both are now filtered views of
+This service replaces the older split into `nodes` (platform health)
+and `middlewares` (SAPIENT endpoints). Both are now filtered views of
 `GET /nodes/current?type=…`.
 
-Config is a JSON array mounted at `MSF_NODES_CONFIG` (default
+Config is a JSON array mounted at `NODES_CONFIG` (default
 /app/config/nodes.json). Edits via `PATCH /nodes/{id}` are persisted back
 to that file and the prober re-reads on the next round.
 """
@@ -167,10 +167,10 @@ async def _poll_loop() -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     global _CONFIG_PATH, _INTERVAL_S, _NTP_URL, _GPS_URL, _POLL_TASK
-    _CONFIG_PATH = os.environ.get("MSF_NODES_CONFIG", DEFAULT_CONFIG)
-    _INTERVAL_S = float(os.environ.get("MSF_NODES_INTERVAL_S", DEFAULT_INTERVAL_S))
-    _NTP_URL = os.environ.get("MSF_NTP_URL", DEFAULT_NTP_URL).rstrip("/")
-    _GPS_URL = os.environ.get("MSF_GPS_URL", DEFAULT_GPS_URL).rstrip("/")
+    _CONFIG_PATH = os.environ.get("NODES_CONFIG", DEFAULT_CONFIG)
+    _INTERVAL_S = float(os.environ.get("NODES_INTERVAL_S", DEFAULT_INTERVAL_S))
+    _NTP_URL = os.environ.get("NTP_URL", DEFAULT_NTP_URL).rstrip("/")
+    _GPS_URL = os.environ.get("GPS_URL", DEFAULT_GPS_URL).rstrip("/")
     log.info("nodes starting: config=%s interval=%ss ntp=%s gps=%s",
              _CONFIG_PATH, _INTERVAL_S, _NTP_URL, _GPS_URL)
     try:
@@ -232,7 +232,7 @@ import re
 # Known types: every entry's `type` must be one of these. Adding a new
 # type means adding a probe module under app/probes/ and registering it
 # in app/probes/__init__.py.
-KNOWN_TYPES = {"platform-node", "middleware", "service"}
+KNOWN_TYPES = {"platform-node", "middleware", "service", "tak-server"}
 
 # id must be DNS-label-safe so we can use it in URL paths without
 # escaping. Same character set as a docker container name.
@@ -277,6 +277,16 @@ def _validate_type_specific(entry: dict) -> None:
                 detail="service requires either health_path (HTTP probe) "
                        "or probe_kind=\"tcp\"",
             )
+    elif t == "tak-server":
+        if "port" not in entry:
+            raise HTTPException(status_code=400, detail="tak-server requires port")
+        # Optional probe_kind=tcp + admin_port — validate the combo when set.
+        if entry.get("probe_kind") == "tcp" and "admin_port" not in entry:
+            raise HTTPException(
+                status_code=400,
+                detail="tak-server with probe_kind=tcp needs admin_port "
+                       "(TCP admin port, e.g. 8089) — the CoT port itself is UDP",
+            )
 
 
 # ---------------------------------------------------------------- POST
@@ -293,6 +303,8 @@ class NodeCreate(BaseModel):
     probe: bool | None = None
     health_path: str | None = Field(None, max_length=128)
     probe_kind: str | None = Field(None, max_length=16)
+    admin_port: int | None = Field(None, ge=1, le=65535)
+    protocol: str | None = Field(None, max_length=16)
     description: str | None = Field(None, max_length=4096)
 
 
@@ -365,6 +377,8 @@ class NodePatch(BaseModel):
     probe: bool | None = None
     health_path: str | None = Field(None, max_length=128)
     probe_kind: str | None = Field(None, max_length=16)
+    admin_port: int | None = Field(None, ge=1, le=65535)
+    protocol: str | None = Field(None, max_length=16)
     description: str | None = Field(None, max_length=4096)
 
 

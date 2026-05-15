@@ -1,12 +1,12 @@
-"""GPS accessor — thin HTTP client to the msf-gps service.
+"""GPS accessor — thin HTTP client to the gps service.
 
-The NMEA UDP listener now lives in its own service (msf-gps). The UI
+The NMEA UDP listener now lives in its own service (gps). The UI
 keeps a one-second background poll going so synchronous callers (template
 substitution for `{{GPS_LAT}}` etc.) get the latest fix without doing
 HTTP themselves and without blocking the event loop.
 
 Configure via:
-    MSF_GPS_URL  base URL of the gps service (default http://127.0.0.1:8090)
+    GPS_URL  base URL of the gps service (default http://127.0.0.1:8090)
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def _fix_from_dict(d: dict) -> GpsFix:
     return GpsFix(
         ok=bool(d.get("ok")),
         error=d.get("error"),
-        source=str(d.get("source") or "msf-gps"),
+        source=str(d.get("source") or "gps"),
         fix_status=d.get("fix_status"),
         latitude=d.get("latitude"),
         longitude=d.get("longitude"),
@@ -127,7 +127,7 @@ async def start_listener() -> None:
     """Lifespan hook — start the background poller. Name kept for API
     compatibility with the previous in-process listener."""
     global _POLL_TASK, GPS_URL
-    GPS_URL = os.environ.get("MSF_GPS_URL", DEFAULT_GPS_URL)
+    GPS_URL = os.environ.get("GPS_URL", DEFAULT_GPS_URL)
     _POLL_TASK = asyncio.create_task(_poll_loop())
 
 
@@ -153,7 +153,7 @@ async def fetch(host: str | None = None, timeout: float = 0.0) -> GpsFix:
     return current_fix()
 
 
-# Stats accessor for /api/gps/raw — exposes whatever msf-gps reports.
+# Stats accessor for /api/gps/raw — exposes whatever gps reports.
 class _ListenerStub:
     """Compatibility shim so /api/gps/raw can do `listener.stats()`."""
 

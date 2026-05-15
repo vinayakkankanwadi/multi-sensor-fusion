@@ -61,7 +61,7 @@ the rest of its source, so the simplest way to run the tests is from
 inside that container:
 
 ```bash
-docker exec msf-cot-bridge python -m pytest /app/sapient_to_cot -v
+docker exec cot-bridge python -m pytest /app/sapient_to_cot -v
 ```
 
 Tests cover each content-type mapping plus the "no CoT for unsupported
@@ -73,7 +73,7 @@ shows how those bindings are produced from the .proto files.
 
 [`cot-bridge/`](../cot-bridge/) accepts SAPIENT length-prefix protobuf
 on TCP `:5005`, calls `convert(msg, fallback_lat=…, fallback_lon=…,
-fallback_alt=…)`, and UDP-sends the XML to `MSF_TAK_HOST:MSF_TAK_PORT`.
+fallback_alt=…)`, and UDP-sends the XML to `TAK_HOST:TAK_PORT`.
 Apex's outbound Parent `forwardAll` connection points at `127.0.0.1:5005`
 (see [`apex/apex_config.json`](../apex/apex_config.json)), so any
 SAPIENT message landing on Apex from a Child or Peer is automatically

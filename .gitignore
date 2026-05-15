@@ -19,7 +19,6 @@ Thumbs.db
 
 # ui runtime artifacts
 ui/runs/
-ui/sapient_msg/
 
 # generated proto bindings + venvs under deprecated/
 deprecated/compat-baseline/edge-sim/sapient_msg/

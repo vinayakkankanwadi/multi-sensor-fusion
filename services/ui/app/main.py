@@ -22,15 +22,11 @@ Endpoints (the OpenAPI schema at /openapi.json is the authoritative list):
     GET    /api/runs/{run_id}
     DELETE /api/runs
 
-  Upstream proxies (no UI-side business logic — just shape-stable views)
-    GET    /api/gps  /api/gps/raw      → services/gps
-    GET    /api/ntp                    → services/ntp
-    GET    /api/clocks                 composite NTP + local + Windows-via-SAPIENT view
-    GET    /api/nodes                  → services/nodes (CRUD also routed through here)
+  Nodes (proxy to services/nodes)
+    GET    /api/nodes                  (?type= filter — middleware / platform-node / service / tak-server)
     POST   /api/nodes
     PATCH  /api/nodes/{id}
     DELETE /api/nodes/{id}
-    GET    /api/middlewares            back-compat filtered view of /api/nodes
 
   Tests drawer
     POST   /api/regression/run         → services/regression
@@ -51,7 +47,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import clocks, flow, gps, nodes, ntp, proto_to_template, regression, runner, templates_loader, validators
+from . import flow, gps, nodes, proto_to_template, regression, runner, templates_loader, validators
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -62,12 +58,12 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    await gps.start_listener()
+    await gps.start_poller()
     log.info("startup complete")
     try:
         yield
     finally:
-        await gps.stop_listener()
+        await gps.stop_poller()
 
 
 app = FastAPI(title="ui",
@@ -350,15 +346,6 @@ def api_clear_runs() -> dict:
     return {"removed": removed, "count": len(removed)}
 
 
-# --- NTP --------------------------------------------------------------------
-
-@app.get("/api/ntp")
-async def api_ntp(server: str | None = None, timeout: float = 2.0) -> dict:
-    srv = server or os.environ.get("NTP_SERVER", ntp.DEFAULT_SERVER)
-    result = await ntp.query(server=srv, timeout=timeout)
-    return result.to_dict()
-
-
 # --- Nodes (and its filtered views) -----------------------------------------
 
 @app.get("/api/nodes")
@@ -368,17 +355,6 @@ async def api_nodes(type: str | None = None) -> dict:
     (platform-node, middleware, …) — the UI's two drawers use that to
     render one source of truth two ways."""
     return await nodes.fetch_current(type=type)
-
-
-# Back-compat shim for the old UI URL. Filtered view of /api/nodes —
-# returns the same payload shape under "middlewares" so any consumer
-# still calling /api/middlewares keeps working through the migration.
-@app.get("/api/middlewares")
-async def api_middlewares() -> dict:
-    payload = await nodes.fetch_current(type="middleware")
-    return {"config_error": payload.get("config_error"),
-            "interval_s": payload.get("interval_s"),
-            "middlewares": payload.get("nodes", [])}
 
 
 class NodePatch(BaseModel):
@@ -452,65 +428,6 @@ async def api_delete_node(node_id: str) -> dict:
         return await nodes.delete(node_id)
     except Exception as exc:
         raise _proxy_error(exc)
-
-
-# Back-compat shim for the old PATCH URL — routed through the unified
-# /api/nodes PATCH. Same payload subset (host/port/probe). Kept so any
-# old browser session or scripted caller using /api/middlewares still
-# works. Will be removed after a deprecation window.
-@app.patch("/api/middlewares/{mw_id}")
-async def api_patch_middleware(mw_id: str, req: NodePatch) -> dict:
-    return await api_patch_node(mw_id, req)
-
-
-# --- GPS --------------------------------------------------------------------
-
-@app.get("/api/gps")
-def api_gps() -> dict:
-    """Return the latest fix from the NMEA-over-UDP listener."""
-    return gps.current_fix().to_dict()
-
-
-@app.get("/api/gps/raw")
-def api_gps_raw() -> dict:
-    """Return listener stats + the last few raw datagrams (hex + ascii) so
-    operators can see what the router is actually pushing — including any
-    prefix the gateway prepends before the NMEA `$`."""
-    if gps.listener is None:
-        return {"error": "listener not running"}
-    return gps.listener.stats()
-
-
-# --- Clocks (NTP + local + Windows-via-SAPIENT-ack) ------------------------
-
-@app.get("/api/clocks")
-async def api_clocks(
-    ntp_server: str | None = None,
-    ntp_timeout: float = 2.0,
-    windows_host: str | None = None,
-    windows_port: int = 14000,
-    windows_node_id: str = "00000000-0000-4000-8000-000000000001",
-    include_windows: bool = False,
-) -> dict:
-    """Composite clock view: local container/host clock, NTP server clock,
-    and (if `include_windows=true`) the Windows harness clock extracted from
-    a SAPIENT RegistrationAck timestamp.
-    """
-    local = clocks.local_clock()
-    ntp_sample = await clocks.ntp_clock(server=ntp_server, timeout=ntp_timeout)
-    win = None
-    if include_windows and windows_host:
-        win = await clocks.windows_clock_via_sapient(
-            host=windows_host, port=windows_port, node_id=windows_node_id
-        )
-    gps_fix = gps.current_fix()
-    return {
-        "local": local.to_dict(),
-        "ntp": ntp_sample.to_dict(),
-        "windows": win.to_dict() if win is not None else None,
-        "gps": gps_fix.to_dict(),
-        "deltas": clocks.deltas_summary(local, ntp_sample, win),
-    }
 
 
 # --- Regression (Tests drawer) ---------------------------------------------

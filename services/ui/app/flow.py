@@ -24,7 +24,7 @@ from pathlib import Path
 
 from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
-from sapient_wire import framer
+import sapient_encode_decode_msg as framer
 
 from . import templates_loader, validators
 

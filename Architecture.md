@@ -167,7 +167,7 @@ sequenceDiagram
         C-->>C: skipped (no CoT mapping for registration_ack)
     and
         A->>C: SAPIENT forwarded
-        C->>C: sapient_to_cot.convert()
+        C->>C: sapient_msg_to_cot.convert()
         C->>T: CoT XML (UDP/6969)
     end
 ```
@@ -188,7 +188,7 @@ sequenceDiagram
 
 | Spec concept (§ in BSI Flex 335 v2) | Today's module | Future home |
 |---|---|---|
-| Length-prefix framing (§4.2) | `libs/sapient-wire/`, used by `services/ui/` and `services/cot-bridge/` | edge / middleware libs |
+| Length-prefix framing (§4.2) | `libs/sapient-encode-decode-msg/`, used by `services/ui/` and `services/cot-bridge/` | edge / middleware libs |
 | Message wrapper (§4 Table 1) | `services/ui/app/templates_loader.py` + `proto_to_template.py` | edge |
 | Validation rules (informal) | `services/ui/app/validators.py` | edge + middleware |
 | ASM-side message generation (§4.5) | `services/ui/app/runner.py`, `services/ui/app/flow.py` | edge-node |
@@ -197,7 +197,7 @@ sequenceDiagram
 | GUI link (§0.4 implementation-specific) | `services/ui/app/static/` SPA | future `gui` service |
 | Clock sync (§4.1 NTP requirement) | `services/ui/app/clocks.py`, `services/ui/app/ntp.py` | OS / chrony layer |
 | GPS source (BSI Flex agnostic) | `services/ui/app/gps.py` (NMEA listener) | edge-node |
-| SAPIENT → CoT bridge | `services/cot-bridge/` + `libs/sapient-to-cot/` | middleware fan-out plugin |
+| SAPIENT → CoT bridge | `services/cot-bridge/` + `libs/sapient-msg-to-cot/` | middleware fan-out plugin |
 
 ### Where this departs from the target
 

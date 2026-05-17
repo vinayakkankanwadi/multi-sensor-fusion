@@ -20,6 +20,10 @@ Thumbs.db
 # ui runtime artifacts
 services/ui/runs/
 
+# generated SAPIENT proto bindings — regenerate via
+# `python libs/sapient-proto-to-msg/sapient_proto_to_msg.py`
+libs/sapient-proto-to-msg/sapient_msg/
+
 # generated proto bindings + venvs under deprecated/
 deprecated/compat-baseline/edge-sim/sapient_msg/
 deprecated/compat-baseline/edge-sim/.venv/

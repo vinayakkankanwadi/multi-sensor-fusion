@@ -3,7 +3,7 @@
 A single-purpose service. Accepts SAPIENT BSI Flex 335 v2 messages on a TCP
 port (length-prefix protobuf, the same wire any SAPIENT consumer speaks),
 converts each one to a Cursor-on-Target XML event using the shared
-`sapient_to_cot` library, and sends it to a configured TAK Server over UDP.
+`sapient_msg_to_cot` library, and sends it to a configured TAK Server over UDP.
 
 It is intentionally **not** plumbed into anything yet. It stands alone so it
 can be tested in isolation — feed it SAPIENT messages with a tiny TCP
@@ -11,13 +11,14 @@ client, watch CoT come out on the wire. Once it's proven, Apex's
 `Parent forwardAll` connection points at this service on :5005.
 
 Environment:
-    COT_BRIDGE_BIND     listen address (default 0.0.0.0)
-    COT_BRIDGE_PORT     listen port    (default 5005)
-    TAK_HOST            TAK Server UDP host
-    TAK_PORT            TAK Server UDP port (default 6969)
-    FALLBACK_LAT        fallback latitude for messages without Location
-    FALLBACK_LON        fallback longitude
-    FALLBACK_ALT        fallback altitude (m, default 0.0)
+    COT_BRIDGE_BIND       listen address (default 0.0.0.0)
+    COT_BRIDGE_PORT       SAPIENT TCP listen port    (default 5005)
+    COT_BRIDGE_HTTP_PORT  HTTP /health + /stats port (default 8092)
+    TAK_HOST              TAK Server UDP host
+    TAK_PORT              TAK Server UDP port (default 6969)
+    FALLBACK_LAT          fallback latitude for messages without Location
+    FALLBACK_LON          fallback longitude
+    FALLBACK_ALT          fallback altitude (m, default 0.0)
 """
 
 from __future__ import annotations
@@ -28,11 +29,14 @@ import os
 import socket
 from typing import Optional
 
+from fastapi import FastAPI
+import uvicorn
+
 from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
-import sapient_to_cot
+import sapient_msg_to_cot
 
-from sapient_wire import framer
+import sapient_encode_decode_msg as framer
 
 
 logging.basicConfig(level=logging.INFO,
@@ -50,10 +54,11 @@ def _env_float(name: str) -> Optional[float]:
         return None
 
 
-BIND      = os.environ.get("COT_BRIDGE_BIND", "0.0.0.0")
-PORT      = int(os.environ.get("COT_BRIDGE_PORT", "5005"))
-TAK_HOST  = os.environ.get("TAK_HOST", "192.168.201.222")
-TAK_PORT  = int(os.environ.get("TAK_PORT", "6969"))
+BIND       = os.environ.get("COT_BRIDGE_BIND", "0.0.0.0")
+PORT       = int(os.environ.get("COT_BRIDGE_PORT", "5005"))
+HTTP_PORT  = int(os.environ.get("COT_BRIDGE_HTTP_PORT", "8092"))
+TAK_HOST   = os.environ.get("TAK_HOST", "192.168.201.222")
+TAK_PORT   = int(os.environ.get("TAK_PORT", "6969"))
 FB_LAT    = _env_float("FALLBACK_LAT")
 FB_LON    = _env_float("FALLBACK_LON")
 FB_ALT    = _env_float("FALLBACK_ALT") or 0.0
@@ -70,7 +75,7 @@ _stats = {
 
 def _convert_and_send(msg: _msg.SapientMessage) -> None:
     content = msg.WhichOneof("content")
-    xml = sapient_to_cot.convert(
+    xml = sapient_msg_to_cot.convert(
         msg, fallback_lat=FB_LAT, fallback_lon=FB_LON, fallback_alt=FB_ALT,
     )
     if xml is None:
@@ -131,13 +136,41 @@ async def _stats_ticker() -> None:
         log.info("stats: %s", _stats)
 
 
+# Tiny HTTP surface so regression tests can probe the service black-box —
+# without it cot-bridge would have no observable interface except log lines
+# and the outbound UDP packets (which are awkward to assert against).
+api = FastAPI(title="cot-bridge")
+
+
+@api.get("/health")
+def health() -> dict:
+    return {"ok": True}
+
+
+@api.get("/stats")
+def stats() -> dict:
+    return {
+        "bind": BIND, "port": PORT,
+        "tak_host": TAK_HOST, "tak_port": TAK_PORT,
+        "fallback_lat": FB_LAT, "fallback_lon": FB_LON, "fallback_alt": FB_ALT,
+        **_stats,
+    }
+
+
 async def main() -> None:
     server = await asyncio.start_server(handle_client, BIND, PORT)
     log.info("cot-bridge listening on %s:%d (TAK target udp://%s:%d, fallback lat=%s lon=%s)",
              BIND, PORT, TAK_HOST, TAK_PORT, FB_LAT, FB_LON)
+    log.info("cot-bridge HTTP /health + /stats on %s:%d", BIND, HTTP_PORT)
+    http_config = uvicorn.Config(api, host=BIND, port=HTTP_PORT,
+                                 log_level="warning", access_log=False)
+    http_server = uvicorn.Server(http_config)
     async with server:
-        asyncio.create_task(_stats_ticker())
-        await server.serve_forever()
+        await asyncio.gather(
+            server.serve_forever(),
+            _stats_ticker(),
+            http_server.serve(),
+        )
 
 
 if __name__ == "__main__":

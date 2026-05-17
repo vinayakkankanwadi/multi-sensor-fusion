@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sapient-encode-decode-msg"
+version = "0.1.0"
+description = "Encode and decode SAPIENT messages on the wire (spec §4.2 length-prefix framing)."
+requires-python = ">=3.10"
+
+# Single-file module — declares itself, no package directory.
+[tool.setuptools]
+py-modules = ["sapient_encode_decode_msg"]

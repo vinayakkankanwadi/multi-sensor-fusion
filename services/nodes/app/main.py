@@ -206,6 +206,15 @@ def health() -> dict:
             "tracked": len(_STATE)}
 
 
+@app.post("/nodes/refresh", status_code=200)
+async def refresh_now() -> dict:
+    """Force a probe round immediately. Used by regression tests so they
+    don't have to wait `interval_s` between mutating the config and
+    re-reading `/nodes/current`."""
+    await _refresh_round()
+    return {"refreshed_at": _LAST_REFRESH_AT, "tracked": len(_STATE)}
+
+
 @app.get("/nodes/current")
 def current(type: str | None = None) -> dict:
     """Latest known status for every node. `?type=…` filters the result —

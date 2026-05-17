@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 # Build orchestrator for multi-sensor-fusion.
 #
-# The proto bindings live in libs/sapient-proto/ and are baked into a
-# small image (sapient-proto:latest) that ui and cot-bridge then
-# COPY from at *their* build time. That image isn't in the default
-# compose-up set, so a single `docker compose build` won't produce it.
-# This wrapper builds it first (under the proto-build profile), then
-# builds whatever else you asked for.
+# Steps:
+#   1. Regenerate the SAPIENT proto bindings (libs/sapient-proto-to-msg/
+#      runs protoc inside an ephemeral container; output goes to
+#      libs/sapient-proto-to-msg/sapient_msg/, which is gitignored).
+#   2. docker compose build.
+#
+# Re-running is idempotent and cheap (the regenerator skips work if the
+# .proto sources are unchanged is a future optimisation; for now it
+# rebuilds every time, which is still seconds).
 #
 # Usage:
-#   ./scripts/build.sh              # build everything
-#   ./scripts/build.sh ui           # build the proto image, then just ui
+#   ./scripts/build.sh                    # build everything
+#   ./scripts/build.sh ui                 # build just ui (still regen first)
 #   ./scripts/build.sh ui cot-bridge
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "[1/2] sapient-proto (proto bindings) ..."
-docker compose --profile proto-build build sapient-proto
+echo "[1/2] regenerating SAPIENT proto bindings ..."
+python3 libs/sapient-proto-to-msg/sapient_proto_to_msg.py
 
-echo "[2/2] runtime services ($@) ..."
+echo "[2/2] docker compose build $* ..."
 docker compose build "$@"
-
-echo "Done."

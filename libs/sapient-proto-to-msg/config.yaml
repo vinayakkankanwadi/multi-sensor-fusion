@@ -1,0 +1,17 @@
+# sapient-proto-to-msg generation config.
+#
+# Single source of truth: dstl/SAPIENT-Proto-Files/ (vendored).
+# Override any field on the command line: `python sapient_proto_to_msg.py --version bsi_flex_335_v1_0`.
+
+# Where the .proto files live (relative to this file, or absolute).
+proto_dir: ../../dstl/SAPIENT-Proto-Files
+
+# Which ICD version to compile. Only v2 is in active use.
+version: bsi_flex_335_v2_0
+
+# Output package goes to <output_dir>/sapient_msg/. Relative paths resolve
+# from this file's directory.
+output_dir: .
+
+# Output language. Add more by extending TARGETS in sapient_proto_to_msg.py.
+lang: python

@@ -4,61 +4,44 @@
 # Server, Windows BSI Flex if present) and each other via localhost without
 # docker-bridge NAT.
 #
-#   sapient-proto  Build-only image holding the generated Python bindings
-#                  for SAPIENT BSI Flex 335 v2. Built once, consumed by ui
-#                  and cot-bridge at *their* build time. Sits behind the
-#                  "proto-build" profile so it doesn't appear under up/ps.
-#                  Use `scripts/build.sh` (or `compose --profile proto-build
-#                  build sapient-proto`) to (re)build it.
 #   ui             FastAPI UI at http://localhost:8080 — template-driven
 #                  SAPIENT v2 sender, treated as one edge node; defaults
 #                  its target to Apex on 127.0.0.1:5020.
 #   gps            NMEA-over-UDP aggregator. Owns UDP/8500, exposes the
-#                  latest GPS fix over HTTP at :8090/gps/current. Single
-#                  source of truth for platform position.
-#   ntp            Multi-source NTP probe. Polls every server in
-#                  NTP_SERVERS, exposes the voted offset/severity at
-#                  :8091/ntp/current.
+#                  latest GPS fix over HTTP at :8090/gps/current.
+#   ntp            Multi-source NTP probe. Exposes the voted
+#                  offset/severity at :8091/ntp/current.
 #   nodes          Unified registry + status for every named platform
-#                  resource. Each config entry has a `type` (platform-node,
-#                  middleware, future tak-server / edge-node / fusion-node)
-#                  and a type-dispatched probe strategy. Exposes
-#                  :8093/nodes/current (optionally ?type=…). Replaces the
-#                  old split into nodes + middlewares — both moved
-#                  to deprecated/.
+#                  resource. :8093/nodes/current.
 #   apex           Real SAPIENT middleware (Python, Trio-based).
-#                  Child ports 5020/5010/5000, Peer 5001, Recorder 5003,
-#                  Parent forwardAll 5004, REST API 8081.
-#                  Outbound Parent forwardAll to cot-bridge (5005) and to
-#                  the Windows BSI Flex harness on the LAN if present.
-#   cot-bridge     SAPIENT → CoT → TAK fan-out. Accepts SAPIENT TCP on
-#                  5005, UDP-sends CoT XML to TAK_HOST:TAK_PORT.
+#                  Child :5020 (v2), :5010 (v1), :5000 (XML). REST :8081.
+#                  Parent forwardAll outbound to cot-bridge (5005) + BSI.
+#   cot-bridge     SAPIENT → CoT → TAK fan-out. SAPIENT TCP :5005,
+#                  HTTP /health + /stats :8092, UDP-sends CoT to TAK.
+#
+# Libraries (libs/<lib>/) are pip-installed into each service that
+# declares them as additional_contexts. The SAPIENT proto bindings are
+# generated on demand into libs/sapient-proto-to-msg/sapient_msg/ via
+#   python libs/sapient-proto-to-msg/sapient_proto_to_msg.py
+# (also wired into scripts/build.sh). They're not a pip package — each
+# consumer COPYs sapient_msg/ directly. No special compose service for
+# proto generation.
 #
 # Run from this directory:
-#   ./scripts/build.sh           # builds proto bindings + every service
+#   docker compose build
 #   docker compose up -d
 #   docker compose down
+#   docker compose run --rm regression       # full test suite
 
 services:
-
-  sapient-proto:
-    # Build-only: scratch image holding /sapient_msg with generated v2
-    # bindings. ui and cot-bridge COPY from it during their own builds,
-    # so the protoc recipe lives in exactly one Dockerfile.
-    profiles: ["proto-build"]
-    build:
-      context: ./libs/sapient-proto
-      additional_contexts:
-        proto-src: ./dstl/SAPIENT-Proto-Files
-    image: sapient-proto:latest
 
   ui:
     build:
       context: ./services/ui
       dockerfile: Dockerfile
       additional_contexts:
-        proto-bindings: docker-image://sapient-proto:latest
-        sapient-wire:   ./libs/sapient-wire
+        sapient-proto-to-msg: ./libs/sapient-proto-to-msg
+        sapient-encode-decode-msg: ./libs/sapient-encode-decode-msg
     image: ui:latest
     container_name: ui
     network_mode: host
@@ -152,7 +135,7 @@ services:
 
   cot-bridge:
     # SAPIENT → CoT → TAK fan-out. Accepts SAPIENT TCP on :5005 (same wire
-    # as Apex/BSI), converts via sapient_to_cot, UDP-sends CoT to TAK.
+    # as Apex/BSI), converts via sapient_msg_to_cot, UDP-sends CoT to TAK.
     # Wired up as one of Apex's outbound Parent forwardAll targets (see
     # apex/apex_config.json → 127.0.0.1:5005). Still launchable standalone
     # for direct-feed testing — point any SAPIENT producer at :5005.
@@ -160,9 +143,9 @@ services:
       context: ./services/cot-bridge
       dockerfile: Dockerfile
       additional_contexts:
-        proto-bindings: docker-image://sapient-proto:latest
-        sapient-wire:   ./libs/sapient-wire
-        sapient-to-cot: ./libs/sapient-to-cot
+        sapient-proto-to-msg: ./libs/sapient-proto-to-msg
+        sapient-encode-decode-msg: ./libs/sapient-encode-decode-msg
+        sapient-msg-to-cot:   ./libs/sapient-msg-to-cot
     image: cot-bridge:latest
     container_name: cot-bridge
     network_mode: host
@@ -178,3 +161,30 @@ services:
       FALLBACK_LON:     "153.0251"
       FALLBACK_ALT:     "27.0"
     restart: unless-stopped
+
+  regression:
+    # Black-box regression + library unit tests. Self-contained image —
+    # libs (libs/<lib>/) are pulled in at build via additional_contexts,
+    # the same way every service builds against them. No host bind-mount;
+    # libs/<lib>/ remains the single source of truth on disk.
+    #
+    # Profile-gated so it doesn't run on `up -d`. One command:
+    #   docker compose up -d                       # bring up the stack
+    #   docker compose run --rm regression         # run every test
+    profiles: ["regression"]
+    build:
+      context: ./tests
+      dockerfile: Dockerfile
+      additional_contexts:
+        # libs-root is the WHOLE libs/ tree — every lib with a
+        # pyproject.toml gets pip-installed automatically. Adding a new
+        # pip-installable lib does not require editing this file or
+        # the Dockerfile.
+        libs-root:            ./libs
+        # sapient-proto-to-msg has no pyproject.toml — its output folder
+        # (sapient_msg/) is generated on demand and COPYed onto
+        # PYTHONPATH directly, same as any consuming service.
+        sapient-proto-to-msg: ./libs/sapient-proto-to-msg
+    image: regression:latest
+    container_name: regression
+    network_mode: host

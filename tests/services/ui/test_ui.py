@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import uuid
 
+import pytest
+
 
 NODE = "11111111-1111-1111-1111-111111111111"
 ULID = "01HABCDEFGHJKMNPQRSTVWXYZ0"
@@ -260,3 +262,63 @@ def test_send_run_is_persisted_under_runs(http, ui_url, apex_tcp):
     assert saved["template"] == "registration"
     sent = saved.get("sent_message", {})
     assert sent.get("node_id") == node_id or sent.get("nodeId") == node_id
+
+
+# ---------- SAPIENT v2 per-content-type send -----------------------------
+# One test per SAPIENT v2 message type. Verifies UI can render +
+# protobuf-serialize + length-prefix-frame + send each over TCP to Apex
+# without UI-side error. Apex's per-type semantics (e.g. ignoring a
+# StatusReport from an unregistered node) aren't asserted here — the
+# system-under-test is the UI's send pipeline.
+
+# Send-only content types (the source node initiates these).
+_INITIATING_CONTENT_TYPES = sorted({
+    "registration", "status_report", "detection_report", "alert", "task",
+})
+
+# Ack/response content types (normally Apex sends these; UI sending them
+# is unusual but still must work on the wire).
+_ACK_CONTENT_TYPES = sorted({
+    "registration_ack", "alert_ack", "task_ack", "error",
+})
+
+
+@pytest.mark.parametrize("content_type",
+                         _INITIATING_CONTENT_TYPES + _ACK_CONTENT_TYPES)
+def test_sapient_v2_send_each_message_type(http, ui_url, apex_tcp, content_type):
+    """Every SAPIENT v2 content type round-trips through UI's send
+    pipeline. Registration always goes first so Apex has a node to
+    associate the follow-up with."""
+    apex_host, apex_port = apex_tcp
+    node_id = str(uuid.uuid4())
+
+    steps = [
+        {"template_name": "registration",
+         "raw_json": _template_raw(http, ui_url, "registration"),
+         "wait_for": "registration_ack",
+         "recv_timeout_s": 5, "drain_after_s": 0.5},
+    ]
+    if content_type != "registration":
+        steps.append({
+            "template_name": content_type,
+            "raw_json": _template_raw(http, ui_url, content_type),
+            "wait_for": None,
+            "recv_timeout_s": 1, "drain_after_s": 0.5,
+        })
+
+    r = http.post(f"{ui_url}/api/send_flow", json={
+        "host": apex_host, "port": apex_port, "node_id": node_id,
+        "validate_before_send": False, "steps": steps,
+    }, timeout=15.0)
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["error"] is None, f"{content_type}: flow error={run['error']}"
+    by_name = {s["template"]: s for s in run["steps"]}
+    assert by_name["registration"]["sent"] is True
+    assert by_name["registration"]["matched_wait_for"] == "registration_ack", (
+        f"{content_type}: registration did not get acked"
+    )
+    if content_type != "registration":
+        assert by_name[content_type]["sent"] is True, (
+            f"{content_type}: UI did not mark step as sent"
+        )

@@ -47,7 +47,12 @@ RUN set -e; \
 COPY . /work/tests/
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/opt
+    PYTHONPATH=/opt:/work/tests
 
-CMD ["pytest", "-v", "--tb=short", "--color=yes", "-p", "no:cacheprovider", \
-     "-c", "/work/tests/pytest.ini", "/work/tests"]
+EXPOSE 8094
+
+# Long-running HTTP wrapper around pytest. The UI's Tests drawer (and
+# any HTTP client) can POST /run and GET /result.
+# CLI usage still works:
+#   docker compose exec regression pytest /work/tests
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8094", "--app-dir", "/work/tests"]

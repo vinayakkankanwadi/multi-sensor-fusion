@@ -31,7 +31,11 @@
 #   docker compose build
 #   docker compose up -d
 #   docker compose down
-#   docker compose run --rm regression       # full test suite
+#
+# Tests are part of the stack — `regression` is a long-running HTTP
+# service (FastAPI on :8094). Trigger from the UI's Tests drawer, or:
+#   docker compose exec regression pytest /work/tests   # ad-hoc CLI run
+#   curl -X POST http://127.0.0.1:8094/run               # via HTTP
 
 services:
 
@@ -50,9 +54,10 @@ services:
       # container; UI polls over HTTP rather than owning any of them
       # directly. /api/middlewares is now a filtered view of /api/nodes
       # (no separate URL — same service, ?type=middleware).
-      GPS_URL:   "http://127.0.0.1:8090"
-      NTP_URL:   "http://127.0.0.1:8091"
-      NODES_URL: "http://127.0.0.1:8093"
+      GPS_URL:        "http://127.0.0.1:8090"
+      NTP_URL:        "http://127.0.0.1:8091"
+      NODES_URL:      "http://127.0.0.1:8093"
+      REGRESSION_URL: "http://127.0.0.1:8094"
     volumes:
       - ./services/ui/templates:/app/templates
       - ./services/ui/runs:/app/runs
@@ -163,15 +168,13 @@ services:
     restart: unless-stopped
 
   regression:
-    # Black-box regression + library unit tests. Self-contained image —
-    # libs (libs/<lib>/) are pulled in at build via additional_contexts,
-    # the same way every service builds against them. No host bind-mount;
-    # libs/<lib>/ remains the single source of truth on disk.
+    # Long-running HTTP wrapper around pytest. Exposes /health, /run,
+    # /status, /result on :8094. The UI's Tests drawer drives it from
+    # the browser; CLI users can `docker compose exec regression pytest
+    # /work/tests` or `curl -X POST http://127.0.0.1:8094/run`.
     #
-    # Profile-gated so it doesn't run on `up -d`. One command:
-    #   docker compose up -d                       # bring up the stack
-    #   docker compose run --rm regression         # run every test
-    profiles: ["regression"]
+    # Same image still runs the underlying test suite — the runtime
+    # difference is only that uvicorn is the entrypoint now.
     build:
       context: ./tests
       dockerfile: Dockerfile
@@ -188,3 +191,4 @@ services:
     image: regression:latest
     container_name: regression
     network_mode: host
+    restart: unless-stopped

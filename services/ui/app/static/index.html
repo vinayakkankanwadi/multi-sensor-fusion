@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=21">
+<link rel="stylesheet" href="/static/style.css?v=22">
 </head>
 <body>
 <header>
@@ -19,6 +19,10 @@
   <button id="message-toggle" class="ghost small status-toggle" aria-expanded="false"
           title="Send a templated SAPIENT message — UUID, templates, editor, result, recent runs">
     <span class="label">Message</span>
+  </button>
+  <button id="tests-toggle" class="ghost small status-toggle" aria-expanded="false"
+          title="Regression + library tests — click Run, see green/yellow/red per file">
+    <span class="label">Tests</span>
   </button>
 </header>
 
@@ -161,6 +165,33 @@
   </footer>
 </section>
 
+<section id="tests-panel" class="drawer" hidden>
+  <div class="row drawer-header">
+    <h2>Tests</h2>
+    <span id="tests-status" class="muted small"></span>
+    <button id="tests-run" title="Run the full test suite (libs + services) in the regression container">
+      Run
+    </button>
+    <span id="tests-overall" class="tests-overall"></span>
+  </div>
+  <table id="tests-table">
+    <thead>
+      <tr>
+        <th>status</th>
+        <th>file</th>
+        <th class="num">passed</th>
+        <th class="num">failed</th>
+        <th class="num">skipped</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <details id="tests-tail" hidden>
+    <summary>raw pytest tail (last 4 KB)</summary>
+    <pre></pre>
+  </details>
+</section>
+
 <!-- Add/Edit Node modal — lazy-rendered, hidden by default. -->
 <div id="node-modal" class="modal" hidden>
   <div class="modal-backdrop" data-dismiss="modal"></div>
@@ -222,6 +253,6 @@
   </form>
 </div>
 
-<script src="/static/app.js?v=21"></script>
+<script src="/static/app.js?v=22"></script>
 </body>
 </html>

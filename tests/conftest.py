@@ -142,3 +142,87 @@ def created_node(http, nodes_url):
             http.delete(f"{nodes_url}/nodes/{nid}", timeout=2.0)
         except httpx.HTTPError:
             pass
+
+
+# ---------- final summary banner ----------------------------------------
+# At the end of every run, print one line per test file with a coloured
+# status: green OK, yellow WARN (skipped/xfailed), red FAIL. Gives an
+# at-a-glance verdict per component without scrolling the full output.
+
+import json
+from collections import defaultdict
+from pathlib import Path
+from datetime import datetime, timezone
+
+
+# Output JSON consumed by tests/server.py /result endpoint.
+RESULT_JSON = Path("/tmp/last_run.json")
+
+
+def _bucket_per_file(stats: dict) -> dict:
+    """Group pytest report objects by test file, counting per outcome."""
+    counts: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"passed": 0, "failed": 0, "skipped": 0}
+    )
+    for outcome in ("passed", "failed", "skipped"):
+        for report in stats.get(outcome, []):
+            nodeid = getattr(report, "nodeid", "") or ""
+            f = nodeid.split("::", 1)[0]
+            if not f or "warnings summary" in f.lower():
+                continue
+            if f.startswith("/work/tests/"):
+                f = f[len("/work/tests/"):]
+            elif f.startswith("tests/"):
+                f = f[len("tests/"):]
+            counts[f][outcome] += 1
+    return counts
+
+
+def _file_status(c: dict) -> str:
+    if c["failed"] > 0:
+        return "fail"
+    if c["skipped"] > 0:
+        return "warn"
+    return "ok"
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    tr = terminalreporter
+    counts = _bucket_per_file(tr.stats)
+    if not counts:
+        return
+
+    # 1) Colored banner — for humans running pytest from the CLI.
+    tr.write_sep("=", "summary by test file", bold=True)
+    for f in sorted(counts):
+        c = counts[f]
+        st = _file_status(c)
+        status, kw = {
+            "ok":   ("  OK  ", {"green":  True, "bold": True}),
+            "warn": (" WARN ", {"yellow": True, "bold": True}),
+            "fail": (" FAIL ", {"red":    True, "bold": True}),
+        }[st]
+        line = (f"  [{status}]  {f:60s}  "
+                f"passed={c['passed']:3d}  failed={c['failed']:2d}  skipped={c['skipped']:2d}")
+        tr.write_line(line, **kw)
+
+    # 2) Structured JSON — for tests/server.py /result endpoint.
+    totals = {"passed": 0, "failed": 0, "skipped": 0}
+    per_file = []
+    for f in sorted(counts):
+        c = counts[f]
+        per_file.append({"file": f, "status": _file_status(c), **c})
+        for k in totals:
+            totals[k] += c[k]
+    payload = {
+        "exit_code": int(exitstatus),
+        "overall_status": "fail" if totals["failed"] else ("warn" if totals["skipped"] else "ok"),
+        "totals": totals,
+        "per_file": per_file,
+        "ended_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    try:
+        RESULT_JSON.write_text(json.dumps(payload, indent=2))
+    except OSError:
+        pass  # /tmp not writable in some envs — banner still printed

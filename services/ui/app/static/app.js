@@ -928,6 +928,122 @@ async function deleteNode(nodeId) {
   }
 }
 
+// ---------- Tests drawer ---------------------------------------------------
+// Drives the regression service (long-running pytest wrapper on :8094)
+// through the UI's proxy endpoints under /api/regression/*. Renders one
+// row per test file with a green/yellow/red dot reflecting that file's
+// outcome.
+
+let _testsPollTimer = null;
+
+async function refreshTestsResult() {
+  try {
+    const [status, result] = await Promise.all([
+      fetchJSON("/api/regression/status"),
+      fetchJSON("/api/regression/result"),
+    ]);
+    renderTests(status, result);
+  } catch (exc) {
+    $("#tests-status").textContent = `regression unreachable: ${exc}`;
+    applyToggleSeverity("tests-toggle", "unknown");
+  }
+}
+
+async function runTests() {
+  const btn = $("#tests-run");
+  btn.disabled = true;
+  $("#tests-status").textContent = "starting…";
+  applyToggleSeverity("tests-toggle", "unknown");
+  try {
+    const r = await fetchJSON("/api/regression/run", { method: "POST" });
+    if (r.__status_code && r.__status_code >= 400 && r.__status_code !== 409) {
+      $("#tests-status").textContent = r.detail || r.error || "failed to start";
+      btn.disabled = false;
+      return;
+    }
+    // Poll status every 1s until done.
+    if (_testsPollTimer) clearInterval(_testsPollTimer);
+    _testsPollTimer = setInterval(async () => {
+      const st = await fetchJSON("/api/regression/status");
+      if (st.status === "done") {
+        clearInterval(_testsPollTimer);
+        _testsPollTimer = null;
+        const result = await fetchJSON("/api/regression/result");
+        renderTests(st, result);
+        btn.disabled = false;
+      } else {
+        const elapsed = st.started_at ? (Date.now() / 1000 - st.started_at).toFixed(1) : "?";
+        $("#tests-status").textContent = `running… ${elapsed}s`;
+      }
+    }, 1000);
+  } catch (exc) {
+    $("#tests-status").textContent = `error: ${exc}`;
+    btn.disabled = false;
+  }
+}
+
+function renderTests(state, result) {
+  const tbody = $("#tests-table tbody");
+  tbody.innerHTML = "";
+  const files = (result && result.available && result.per_file) || [];
+  for (const f of files) {
+    const tr = document.createElement("tr");
+    tr.className = `test-row sev-${f.status}`;
+    tr.innerHTML = `
+      <td><span class="dot dot-${f.status}"></span>${labelFor(f.status)}</td>
+      <td class="mono">${escapeHtml(f.file)}</td>
+      <td class="num">${f.passed}</td>
+      <td class="num">${f.failed}</td>
+      <td class="num">${f.skipped}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  const overall = $("#tests-overall");
+  const statusEl = $("#tests-status");
+  if (state && state.status === "running") {
+    statusEl.textContent = "running…";
+    overall.textContent = "";
+    overall.className = "tests-overall";
+    applyToggleSeverity("tests-toggle", "unknown");
+  } else if (result && result.available) {
+    const t = result.totals || {passed:0,failed:0,skipped:0};
+    const sev = result.overall_status || "unknown";
+    statusEl.textContent =
+      `last run: ${labelFor(sev)} — ${t.passed} passed, ${t.failed} failed, ${t.skipped} skipped` +
+      (state && state.duration_s != null ? ` in ${state.duration_s}s` : "");
+    overall.textContent = labelFor(sev);
+    overall.className = `tests-overall sev-${sev}`;
+    applyToggleSeverity("tests-toggle", sev);
+  } else {
+    statusEl.textContent = "no runs yet — click Run";
+    overall.textContent = "";
+    overall.className = "tests-overall";
+    applyToggleSeverity("tests-toggle", "unknown");
+  }
+
+  const tail = $("#tests-tail");
+  if (state && state.tail) {
+    tail.hidden = false;
+    tail.querySelector("pre").textContent = state.tail;
+  } else {
+    tail.hidden = true;
+  }
+}
+
+function labelFor(sev) {
+  return ({ok: "OK", warn: "WARN", fail: "FAIL", unknown: "—"}[sev] || sev);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+async function fetchJSON(url, opts = {}) {
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
 function init() {
   const saved = loadEndpoint();
   selectedTargetId = saved.target_node_id || null;
@@ -953,6 +1069,12 @@ function init() {
   $("#nodes-toggle").addEventListener("click", toggleDrawer("nodes-toggle", "nodes-panel"));
   $("#services-toggle").addEventListener("click", toggleDrawer("services-toggle", "services-panel"));
   $("#message-toggle").addEventListener("click", toggleDrawer("message-toggle", "message-panel"));
+  $("#tests-toggle").addEventListener("click", () => {
+    toggleDrawer("tests-toggle", "tests-panel")();
+    // Fetch the last result whenever the drawer opens.
+    if (!$("#tests-panel").hidden) refreshTestsResult();
+  });
+  $("#tests-run").addEventListener("click", runTests);
 
   // Nodes CRUD wiring.
   $("#add-node").addEventListener("click", () => openNodeForm(null));
@@ -991,6 +1113,9 @@ function init() {
   loadServices();
   loadTemplates();
   loadRecentRuns();
+  // Surface the last regression result's status on the Tests toggle dot
+  // even before the user opens the drawer.
+  refreshTestsResult();
 
   if (nodesRefreshTimer) clearInterval(nodesRefreshTimer);
   nodesRefreshTimer = setInterval(() => {

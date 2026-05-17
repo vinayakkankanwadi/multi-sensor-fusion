@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import clocks, flow, gps, nodes, ntp, proto_to_template, runner, templates_loader, validators
+from . import clocks, flow, gps, nodes, ntp, proto_to_template, regression, runner, templates_loader, validators
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -486,3 +486,20 @@ async def api_clocks(
         "gps": gps_fix.to_dict(),
         "deltas": clocks.deltas_summary(local, ntp_sample, win),
     }
+
+
+# --- Regression (Tests drawer) ---------------------------------------------
+
+@app.get("/api/regression/status")
+async def api_regression_status() -> dict:
+    return await regression.status()
+
+
+@app.get("/api/regression/result")
+async def api_regression_result() -> dict:
+    return await regression.result()
+
+
+@app.post("/api/regression/run")
+async def api_regression_run() -> dict:
+    return await regression.run()

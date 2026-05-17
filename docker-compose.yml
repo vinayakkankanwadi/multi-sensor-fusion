@@ -54,7 +54,7 @@ services:
 
   ui:
     build:
-      context: ./ui
+      context: ./services/ui
       dockerfile: Dockerfile
       additional_contexts:
         proto-bindings: docker-image://sapient-proto:latest
@@ -71,8 +71,8 @@ services:
       NTP_URL:   "http://127.0.0.1:8091"
       NODES_URL: "http://127.0.0.1:8093"
     volumes:
-      - ./ui/templates:/app/templates
-      - ./ui/runs:/app/runs
+      - ./services/ui/templates:/app/templates
+      - ./services/ui/runs:/app/runs
     restart: unless-stopped
 
   gps:
@@ -81,7 +81,7 @@ services:
     # truth for "what does the platform think its GPS position is" — the
     # UI, fusion node, and any future consumer all read /gps/current here.
     build:
-      context: ./gps
+      context: ./services/gps
       dockerfile: Dockerfile
     image: gps:latest
     container_name: gps
@@ -97,7 +97,7 @@ services:
     # Centralises the cadence (no N consumers × M servers fan-out) and
     # gives us one canonical "what's our clock drift" answer.
     build:
-      context: ./ntp
+      context: ./services/ntp
       dockerfile: Dockerfile
     image: ntp:latest
     container_name: ntp
@@ -117,7 +117,7 @@ services:
     # deprecated/. The UI's two drawers consume filtered views of the
     # same /nodes/current endpoint.
     build:
-      context: ./nodes
+      context: ./services/nodes
       dockerfile: Dockerfile
     image: nodes:latest
     container_name: nodes
@@ -133,12 +133,12 @@ services:
       # Live-edit the node list without rebuilding the image. Read-write
       # so PATCH /nodes/{id} can persist host/port/probe changes typed
       # in the UI back to the file on disk.
-      - ./nodes/config/nodes.json:/app/config/nodes.json
+      - ./services/nodes/config/nodes.json:/app/config/nodes.json
     restart: unless-stopped
 
   apex:
     build:
-      context: ./apex
+      context: ./services/apex
       dockerfile: Dockerfile
       additional_contexts:
         apex-src: ./dstl/Apex-SAPIENT-Middleware
@@ -147,7 +147,7 @@ services:
     network_mode: host
     volumes:
       # Live-edit the LAN config without rebuilding the image.
-      - ./apex/apex_config.json:/app/apex_config.json:ro
+      - ./services/apex/apex_config.json:/app/apex_config.json:ro
     restart: unless-stopped
 
   cot-bridge:
@@ -157,7 +157,7 @@ services:
     # apex/apex_config.json → 127.0.0.1:5005). Still launchable standalone
     # for direct-feed testing — point any SAPIENT producer at :5005.
     build:
-      context: ./cot-bridge
+      context: ./services/cot-bridge
       dockerfile: Dockerfile
       additional_contexts:
         proto-bindings: docker-image://sapient-proto:latest

@@ -19,7 +19,7 @@ send time.
 | `{{GPS_ALT}}` | Latest NMEA fix altitude (m). |
 
 The exact JSON shape must follow the v2 protobuf
-([`dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/`](../../dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/)).
+([`dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/`](../../../dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/)).
 The Windows reference harness's FluentValidation rules are stricter than
 the .proto declares — see `deprecated/compat-baseline/edge-sim/driver/builders.py`
 and the project's `reference_harness_quirks` memory for known gotchas

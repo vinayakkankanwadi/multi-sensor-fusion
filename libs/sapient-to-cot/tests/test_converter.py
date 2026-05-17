@@ -7,7 +7,7 @@ the cot-bridge container (bindings are generated at build time):
     docker exec cot-bridge python -m pytest /app/sapient_to_cot
 
 On the host you need a venv with the bindings on PYTHONPATH —
-[`cot-bridge/Dockerfile`](../../cot-bridge/Dockerfile) shows how those
+[`services/cot-bridge/Dockerfile`](../../../services/cot-bridge/Dockerfile) shows how those
 are produced from the .proto files.
 """
 

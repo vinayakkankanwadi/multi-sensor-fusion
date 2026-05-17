@@ -47,7 +47,7 @@ ui/
 └── runs/                 mounted volume — per-run JSON transcripts
 ```
 
-The compose file is at the **repo root** ([`docker-compose.yml`](../docker-compose.yml)),
+The compose file is at the **repo root** ([`docker-compose.yml`](../../docker-compose.yml)),
 not under `ui/`, because the UI is one of three services (`ui`, `apex`,
 `cot-bridge`) and they share host networking.
 
@@ -76,7 +76,7 @@ Open http://localhost:8080 in your browser.
    - `recv` lines: any reply from the harness (typically `registration_ack`,
      or `error` if validation failed).
 7. Recent runs appear at the bottom; click any to re-display its transcript.
-   Run JSON also lands under `ui/runs/<run_id>/result.json` on the host.
+   Run JSON also lands under `services/ui/runs/<run_id>/result.json` on the host.
 
 ## Step-by-step: edit before sending
 
@@ -177,7 +177,7 @@ machine is more than a couple seconds off.
 ## Step-by-step: add a new message template
 
 ```bash
-cd ui/templates
+cd services/ui/templates
 cp status_report.json my_new_status.json
 $EDITOR my_new_status.json    # tweak fields, set the right oneof content
 # no need to restart — templates/ is mounted live

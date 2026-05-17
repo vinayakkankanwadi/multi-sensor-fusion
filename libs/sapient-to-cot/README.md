@@ -5,7 +5,7 @@ Cursor-on-Target (CoT) XML events. The package is **transport-agnostic**
 — `convert()` returns CoT XML bytes (or `None` if there's no mapping or
 no usable position), and the caller decides how to ship them.
 
-Today the only consumer is [`cot-bridge/`](../cot-bridge/) — a standalone
+Today the only consumer is [`cot-bridge/`](../../services/cot-bridge/) — a standalone
 SAPIENT → CoT → TAK fan-out service that's plugged into Apex's outbound
 Parent `forwardAll`. It vendors this package in via Docker build context
 so there's no PyPI install step.
@@ -66,16 +66,16 @@ docker exec cot-bridge python -m pytest /app/sapient_to_cot -v
 
 Tests cover each content-type mapping plus the "no CoT for unsupported
 content" guard. To run on the host you need a venv with the v2 proto
-bindings on `PYTHONPATH`; the [`cot-bridge/Dockerfile`](../cot-bridge/Dockerfile)
+bindings on `PYTHONPATH`; the [`cot-bridge/Dockerfile`](../../services/cot-bridge/Dockerfile)
 shows how those bindings are produced from the .proto files.
 
 ## How cot-bridge uses it
 
-[`cot-bridge/`](../cot-bridge/) accepts SAPIENT length-prefix protobuf
+[`cot-bridge/`](../../services/cot-bridge/) accepts SAPIENT length-prefix protobuf
 on TCP `:5005`, calls `convert(msg, fallback_lat=…, fallback_lon=…,
 fallback_alt=…)`, and UDP-sends the XML to `TAK_HOST:TAK_PORT`.
 Apex's outbound Parent `forwardAll` connection points at `127.0.0.1:5005`
-(see [`apex/apex_config.json`](../apex/apex_config.json)), so any
+(see [`apex/apex_config.json`](../../services/apex/apex_config.json)), so any
 SAPIENT message landing on Apex from a Child or Peer is automatically
 mirrored as CoT on the map. Messages with no CoT mapping (e.g.
 `registration_ack`) return `None` and cot-bridge bumps its

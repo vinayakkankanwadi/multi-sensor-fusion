@@ -34,9 +34,9 @@ vendored Python SAPIENT middleware) sits in the middle of the chain.
 
 | Service | Role |
 |---|---|
-| [`ui`](ui/) | FastAPI SPA. Template-driven SAPIENT v2 sender. Treated as one edge node. Default target is Apex on `127.0.0.1:5020`. |
-| [`apex`](apex/) | Vendored [Apex SAPIENT Middleware](dstl/Apex-SAPIENT-Middleware/) (Trio/Python). Accepts Child/Peer registrations, forwards outbound to `cot-bridge` and to the Windows BSI Flex harness via Parent `forwardAll`. |
-| [`cot-bridge`](cot-bridge/) | Standalone SAPIENT → CoT → TAK fan-out. Accepts SAPIENT length-prefix protobuf on TCP/5005, UDP-sends CoT XML to TAK Server. |
+| [`services/ui`](services/ui/) | FastAPI SPA. Template-driven SAPIENT v2 sender. Treated as one edge node. Default target is Apex on `127.0.0.1:5020`. |
+| [`services/apex`](services/apex/) | Vendored [Apex SAPIENT Middleware](dstl/Apex-SAPIENT-Middleware/) (Trio/Python). Accepts Child/Peer registrations, forwards outbound to `cot-bridge` and to the Windows BSI Flex harness via Parent `forwardAll`. |
+| [`services/cot-bridge`](services/cot-bridge/) | Standalone SAPIENT → CoT → TAK fan-out. Accepts SAPIENT length-prefix protobuf on TCP/5005, UDP-sends CoT XML to TAK Server. |
 
 Everything runs on host networking so containers see each other on
 `localhost`. Earlier versions had the UI doing its own TAK fan-out (and a
@@ -188,16 +188,16 @@ sequenceDiagram
 
 | Spec concept (§ in BSI Flex 335 v2) | Today's module | Future home |
 |---|---|---|
-| Length-prefix framing (§4.2) | `ui/app/framer.py`, `cot-bridge/app/framer.py` | edge / middleware libs |
-| Message wrapper (§4 Table 1) | `ui/app/templates_loader.py` + `proto_to_template.py` | edge |
-| Validation rules (informal) | `ui/app/validators.py` | edge + middleware |
-| ASM-side message generation (§4.5) | `ui/app/runner.py`, `ui/app/flow.py` | edge-node |
-| SAPIENT middleware (§0.4) | `apex/` (vendored Apex) | this stays |
+| Length-prefix framing (§4.2) | `libs/sapient-wire/`, used by `services/ui/` and `services/cot-bridge/` | edge / middleware libs |
+| Message wrapper (§4 Table 1) | `services/ui/app/templates_loader.py` + `proto_to_template.py` | edge |
+| Validation rules (informal) | `services/ui/app/validators.py` | edge + middleware |
+| ASM-side message generation (§4.5) | `services/ui/app/runner.py`, `services/ui/app/flow.py` | edge-node |
+| SAPIENT middleware (§0.4) | `services/apex/` (vendored Apex from `dstl/Apex-SAPIENT-Middleware/`) | this stays |
 | Edge-node forwarding to fusion | Apex `Parent forwardAll` | middleware |
-| GUI link (§0.4 implementation-specific) | `ui/app/static/` SPA | future `gui` service |
-| Clock sync (§4.1 NTP requirement) | `ui/app/clocks.py`, `ui/app/ntp.py` | OS / chrony layer |
-| GPS source (BSI Flex agnostic) | `ui/app/gps.py` (NMEA listener) | edge-node |
-| SAPIENT → CoT bridge | `cot-bridge/` + `libs/sapient-to-cot/` | middleware fan-out plugin |
+| GUI link (§0.4 implementation-specific) | `services/ui/app/static/` SPA | future `gui` service |
+| Clock sync (§4.1 NTP requirement) | `services/ui/app/clocks.py`, `services/ui/app/ntp.py` | OS / chrony layer |
+| GPS source (BSI Flex agnostic) | `services/ui/app/gps.py` (NMEA listener) | edge-node |
+| SAPIENT → CoT bridge | `services/cot-bridge/` + `libs/sapient-to-cot/` | middleware fan-out plugin |
 
 ### Where this departs from the target
 
@@ -207,10 +207,10 @@ sequenceDiagram
   node, no dedicated GUI service, and Apex's persistence (Elasticsearch)
   is disabled.
 - LAN endpoints (router, Windows, TAK) are baked into
-  `docker-compose.yml` and `apex/apex_config.json`. The planned mitigation
+  `docker-compose.yml` and `services/apex/apex_config.json`. The planned mitigation
   is a `.env` file: current values become defaults in `.env.example`,
   real values gitignored.
-- No PostgreSQL today. UI runs persist as JSON under `ui/runs/`; Apex's
+- No PostgreSQL today. UI runs persist as JSON under `services/ui/runs/`; Apex's
   Elasticsearch store is off.
 
 The rest of this document describes the **target** — what we are working
@@ -568,7 +568,7 @@ flowchart LR
 ## 13. Compatibility verification against the Windows reference
 
 Behavior is locked down by the **ui** at
-[`ui/`](ui/) — a Docker-packaged web UI that drives any
+[`services/ui/`](services/ui/) — a Docker-packaged web UI that drives any
 SAPIENT v2 message into a configurable host:port and inspects the wire
 conversation. To verify the middleware is wire-compatible with the Windows
 reference, we point the UI's **Host** field at either:

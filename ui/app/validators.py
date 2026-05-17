@@ -1,7 +1,7 @@
 """Client-side SAPIENT message validators.
 
 Mirror the Windows reference harness's FluentValidation rules
-(BSI-Flex-335-v2-Test-Harness/SapientServices/Data/Validation/) so the UI
+(dstl/BSI-Flex-335-v2-Test-Harness/SapientServices/Data/Validation/) so the UI
 can fail-fast before sending. Used when the request's `validate_before_send`
 flag is true.
 

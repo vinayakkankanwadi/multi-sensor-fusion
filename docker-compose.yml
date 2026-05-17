@@ -49,7 +49,7 @@ services:
     build:
       context: ./libs/sapient-proto
       additional_contexts:
-        proto-src: ./SAPIENT-Proto-Files
+        proto-src: ./dstl/SAPIENT-Proto-Files
     image: sapient-proto:latest
 
   ui:
@@ -141,7 +141,7 @@ services:
       context: ./apex
       dockerfile: Dockerfile
       additional_contexts:
-        apex-src: ./Apex-SAPIENT-Middleware
+        apex-src: ./dstl/Apex-SAPIENT-Middleware
     image: apex:latest
     container_name: apex
     network_mode: host

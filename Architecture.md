@@ -4,7 +4,7 @@
 
 This repository delivers a Linux-first, container-based reimplementation of the
 SAPIENT BSI Flex 335 v2.0 stack. The upstream reference
-([`BSI-Flex-335-v2-Test-Harness/`](BSI-Flex-335-v2-Test-Harness/)) is Windows-only
+([`dstl/BSI-Flex-335-v2-Test-Harness/`](dstl/BSI-Flex-335-v2-Test-Harness/)) is Windows-only
 (WinForms, .NET on Windows, hard-pinned PostgreSQL 12) and cannot run on Ubuntu
 or Nvidia Orin. The rewrite preserves wire compatibility with that reference so
 existing SAPIENT components can interoperate unchanged.
@@ -35,7 +35,7 @@ vendored Python SAPIENT middleware) sits in the middle of the chain.
 | Service | Role |
 |---|---|
 | [`ui`](ui/) | FastAPI SPA. Template-driven SAPIENT v2 sender. Treated as one edge node. Default target is Apex on `127.0.0.1:5020`. |
-| [`apex`](apex/) | Vendored [Apex SAPIENT Middleware](Apex-SAPIENT-Middleware/) (Trio/Python). Accepts Child/Peer registrations, forwards outbound to `cot-bridge` and to the Windows BSI Flex harness via Parent `forwardAll`. |
+| [`apex`](apex/) | Vendored [Apex SAPIENT Middleware](dstl/Apex-SAPIENT-Middleware/) (Trio/Python). Accepts Child/Peer registrations, forwards outbound to `cot-bridge` and to the Windows BSI Flex harness via Parent `forwardAll`. |
 | [`cot-bridge`](cot-bridge/) | Standalone SAPIENT → CoT → TAK fan-out. Accepts SAPIENT length-prefix protobuf on TCP/5005, UDP-sends CoT XML to TAK Server. |
 
 Everything runs on host networking so containers see each other on
@@ -334,7 +334,7 @@ Component responsibilities:
   flag also lets it listen if needed.
 - **Framer**: reads the 4-byte little-endian length prefix and yields exact
   message frames. Mirrors the semantics of
-  [`ByteDataMessageBuilder.cs`](BSI-Flex-335-v2-Test-Harness/SAPIENTMessageProcessor/ByteDataMessageBuilder.cs).
+  [`ByteDataMessageBuilder.cs`](dstl/BSI-Flex-335-v2-Test-Harness/SAPIENTMessageProcessor/ByteDataMessageBuilder.cs).
 - **Dispatcher**: switches on `SapientMessage.WhichOneof('content')` and runs
   the appropriate handler. No mutation of the message.
 - **Registry**: tracks `node_id → (last_seen, capabilities, registered_at)`.
@@ -450,7 +450,7 @@ Every byte stream consists of repeated frames:
 
 - `len` = 32-bit little-endian, payload length in bytes (excludes the 4-byte
   prefix). Per spec §4.2; this differs from standard Google framing.
-- Payload = a `SapientMessage` (see [sapient_message.proto](SAPIENT-Proto-Files/bsi_flex_335_v2_0/sapient_message.proto)).
+- Payload = a `SapientMessage` (see [sapient_message.proto](dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/sapient_message.proto)).
   Mandatory fields: `timestamp`, `node_id`, exactly one of the `content` oneof.
 
 ## 8. Database schema (sketch)
@@ -525,8 +525,8 @@ multi-sensor-fusion/
 ├── fusion-node/                     future
 ├── gui/                             future
 ├── deprecated/compat-baseline/      original CLI baseline harness (kept for history; superseded by ui/)
-├── BSI-Flex-335-v2-Test-Harness/    upstream reference (unchanged)
-├── SAPIENT-Proto-Files/             upstream protos (unchanged)
+├── dstl/BSI-Flex-335-v2-Test-Harness/    upstream reference (unchanged)
+├── dstl/SAPIENT-Proto-Files/             upstream protos (unchanged)
 ├── Stone-Soup/                      vendored for future fusion node
 └── spec/
     └── bsi-flex-335.pdf

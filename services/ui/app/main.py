@@ -1,16 +1,41 @@
 """FastAPI entrypoint for the UI.
 
-Endpoints:
-  GET  /                              single-page UI
-  GET  /api/health                    liveness + template names
-  GET  /api/templates                 discovered templates with raw + decoded preview
-  GET  /api/templates/{name}          one template's raw JSON
-  POST /api/templates/regenerate      run proto-to-template converter against /app/templates
-  POST /api/send                      send one templated message; capture transcript
-  GET  /api/runs                      list recent run summaries
-  GET  /api/runs/{run_id}             one run's full transcript
-  GET  /api/ntp                       probe NTP server and return offset/severity
-  GET  /api/validate                  client-side validate a template (no send)
+Endpoints (the OpenAPI schema at /openapi.json is the authoritative list):
+
+  Static / health
+    GET  /                              single-page UI
+    GET  /api/health                    liveness
+
+  Templates (under services/ui/templates/, regen from .proto on demand)
+    GET    /api/templates
+    GET    /api/templates/{name}
+    POST   /api/templates/regenerate
+    DELETE /api/templates
+
+  Send + validate
+    POST   /api/send             one templated message
+    POST   /api/send_flow        ordered multi-step flow on a single TCP connection
+    POST   /api/validate         client-side validate (no send)
+
+  Runs
+    GET    /api/runs
+    GET    /api/runs/{run_id}
+    DELETE /api/runs
+
+  Upstream proxies (no UI-side business logic — just shape-stable views)
+    GET    /api/gps  /api/gps/raw      → services/gps
+    GET    /api/ntp                    → services/ntp
+    GET    /api/clocks                 composite NTP + local + Windows-via-SAPIENT view
+    GET    /api/nodes                  → services/nodes (CRUD also routed through here)
+    POST   /api/nodes
+    PATCH  /api/nodes/{id}
+    DELETE /api/nodes/{id}
+    GET    /api/middlewares            back-compat filtered view of /api/nodes
+
+  Tests drawer
+    POST   /api/regression/run         → services/regression
+    GET    /api/regression/status
+    GET    /api/regression/result
 """
 
 from __future__ import annotations

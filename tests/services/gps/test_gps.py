@@ -61,9 +61,15 @@ def test_gns_multi_gnss_parsed_into_current(http, gps_url, udp_send,
 def test_no_fix_gga_marks_snapshot_invalid(http, gps_url, udp_send,
                                             gps_nmea_endpoint):
     host, port = gps_nmea_endpoint
+    # If a previous test left a valid fix, the no-fix datagram may take
+    # a moment to land + be reflected in /gps/current — poll briefly.
     udp_send(host, port, GGA_NO_FIX + b"\r\n")
-    time.sleep(0.2)
-    cur = http.get(f"{gps_url}/gps/current").json()
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        cur = http.get(f"{gps_url}/gps/current").json()
+        if cur.get("fix_status") == "no_fix":
+            break
+        time.sleep(0.05)
     assert cur["fix_status"] == "no_fix"
     assert cur["ok"] is False
 

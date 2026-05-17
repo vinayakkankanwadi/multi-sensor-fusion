@@ -184,9 +184,35 @@ $EDITOR my_new_status.json    # tweak fields, set the right oneof content
 ```
 
 Reload the browser. The new template name appears in the sidebar.
-The format is google.protobuf.json_format encoding of `SapientMessage`
-(see [templates/README.md](templates/README.md) for placeholders and the
-known FluentValidator quirks the .proto doesn't capture).
+
+### Template format
+
+Each `.json` is a `SapientMessage` rendered in
+`google.protobuf.json_format`, following the v2 protobuf at
+[`dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/`](../../dstl/SAPIENT-Proto-Files/bsi_flex_335_v2_0/).
+The following placeholders are substituted at send time:
+
+| Placeholder | Replaced with |
+|---|---|
+| `{{NOW}}`     | Current UTC RFC3339 timestamp, e.g. `2026-05-13T12:34:56.000Z` |
+| `{{ULID}}`    | A freshly generated ULID. Each occurrence is independent. |
+| `{{NODE_ID}}` | The UUID node_id configured in the UI. |
+| `{{GPS_LAT}}` | Latest NMEA fix latitude (decimal degrees). Falls back to `0.0` if no fix yet. |
+| `{{GPS_LON}}` | Latest NMEA fix longitude (decimal degrees). |
+| `{{GPS_ALT}}` | Latest NMEA fix altitude (m). |
+
+### Reference harness quirks
+
+The Windows reference's FluentValidation rules are stricter than the
+`.proto` declares. Known gotchas:
+
+* `Registration.icd_version` must be the literal string
+  `"BSI Flex 335 v2.0"` (with spaces, not underscores).
+* `mode_definition[].task.concurrent_tasks` must be set on every mode.
+
+The full set of validator quirks lives in
+[`services/ui/app/validators.py`](app/validators.py) — that's the
+authoritative list.
 
 ## Verified end-to-end
 

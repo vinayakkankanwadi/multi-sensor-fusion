@@ -494,42 +494,39 @@ Tables omitted from the reference and not reintroduced:
 | Container base | `python:3.12-slim` | Small, multi-arch (linux/amd64, linux/arm64 for Orin) |
 | Orchestration | `docker compose` (dev), TBD (prod) | Compose for the local dev/test loop |
 
-## 10. Project layout (target)
+## 10. Project layout (actual)
 
 ```
 multi-sensor-fusion/
 ├── Architecture.md                  this document
-├── docker-compose.yml               middleware + db + (later) edge/fusion/gui
-├── proto/                           generated Python bindings checked in
-├── middleware/
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── src/middleware/
-│   │   ├── __main__.py              entrypoint
-│   │   ├── config.py                pydantic-settings
-│   │   ├── framing.py               4-byte LE length prefix codec
-│   │   ├── tcp/
-│   │   │   ├── server.py            edge-facing
-│   │   │   └── client.py            fusion-facing
-│   │   ├── dispatch.py              oneof switch → handlers
-│   │   ├── handlers/                one per outer message
-│   │   ├── registry.py              node_id → state, TTL
-│   │   ├── persistence/             asyncpg + parameterised SQL
-│   │   ├── forwarder.py             transparent forwarding
-│   │   └── health.py                heartbeat tick
-│   └── tests/
-├── db/
-│   ├── Dockerfile                   postgres:16 + PostGIS + init SQL
-│   └── init/                        schema + indices
-├── edge-node/                       future
-├── fusion-node/                     future
-├── gui/                             future
-├── deprecated/compat-baseline/      original CLI baseline harness (kept for history; superseded by ui/)
-├── dstl/BSI-Flex-335-v2-Test-Harness/    upstream reference (unchanged)
-├── dstl/SAPIENT-Proto-Files/             upstream protos (unchanged)
-├── Stone-Soup/                      vendored for future fusion node
-└── spec/
-    └── bsi-flex-335.pdf
+├── README.md                        orientation + run instructions
+├── docker-compose.yml               every runnable component (services + libs + regression runner)
+├── scripts/build.sh                 regen proto bindings + docker compose build
+├── services/                        runtime containers (one folder per docker-compose service)
+│   ├── ui/                          FastAPI SPA; SAPIENT v2 sender + Tests drawer
+│   ├── apex/                        vendored Apex SAPIENT middleware wrapper
+│   ├── cot-bridge/                  SAPIENT → CoT XML → TAK UDP fan-out
+│   ├── gps/                         NMEA-over-UDP listener; HTTP /gps/current
+│   ├── ntp/                         multi-source NTP probe; HTTP /ntp/current
+│   └── nodes/                       unified platform-resource registry + per-type severity probes
+├── libs/                            shared Python packages (pip-installed into consumers)
+│   ├── sapient-encode-decode-msg/   length-prefix framer (spec §4.2); single-file module
+│   ├── sapient-msg-to-cot/          SapientMessage → CoT XML converter
+│   └── sapient-proto-to-msg/        .proto → sapient_msg/ generator (`python sapient_proto_to_msg.py`)
+│       └── sapient_msg/             generated bindings (gitignored — produced on demand)
+├── tests/                           all tests + the regression runner
+│   ├── Dockerfile                   long-running pytest HTTP wrapper (:8094)
+│   ├── server.py                    /health, /run, /status, /result
+│   ├── conftest.py                  shared fixtures + per-file colored summary
+│   ├── libs/<package>/test_<package>.py
+│   └── services/<service>/test_<service>.py
+├── dstl/                            vendored upstream sources (read-only)
+│   ├── Apex-SAPIENT-Middleware/         protected — wrapped by services/apex/
+│   ├── BSI-Flex-335-v2-Test-Harness/    upstream reference harness (Windows .NET)
+│   ├── SAPIENT-Proto-Files/             upstream .proto definitions (input to sapient-proto-to-msg)
+│   ├── Stone-Soup/                      vendored for future fusion node
+│   └── spec/                            BSI Flex 335 v2 PDF + supporting docs
+└── deprecated/                      pre-rewrite code kept for history; not built or run
 ```
 
 ## 11. Deviations from the upstream reference (intentional)

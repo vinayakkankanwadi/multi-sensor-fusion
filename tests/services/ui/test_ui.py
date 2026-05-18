@@ -201,12 +201,15 @@ def test_templates_every_template_passes_validator(http, ui_url):
 def test_send_single_registration_to_apex_yields_ack(http, ui_url, apex_tcp):
     apex_host, apex_port = apex_tcp
     node_id = str(uuid.uuid4())
-    r = http.post(f"{ui_url}/api/send", json={
+    r = http.post(f"{ui_url}/api/run", json={
         "host": apex_host, "port": apex_port, "node_id": node_id,
-        "template_name": "registration",
-        "raw_json": _template_raw(http, ui_url, "registration"),
-        "recv_timeout_s": 5, "drain_after_s": 0.5,
         "validate_before_send": False,
+        "steps": [{
+            "template_name": "registration",
+            "raw_json": _template_raw(http, ui_url, "registration"),
+            "wait_for": "registration_ack",
+            "recv_timeout_s": 5, "drain_after_s": 0.5,
+        }],
     })
     assert r.status_code == 200, r.text
     run = r.json()
@@ -232,7 +235,7 @@ def test_send_flow_registration_status_detection(http, ui_url, apex_tcp):
          "raw_json": _template_raw(http, ui_url, "detection_report"),
          "wait_for": None, "recv_timeout_s": 2, "drain_after_s": 0.5},
     ]
-    r = http.post(f"{ui_url}/api/send_flow", json={
+    r = http.post(f"{ui_url}/api/run", json={
         "host": apex_host, "port": apex_port, "node_id": node_id,
         "validate_before_send": False, "steps": steps,
     }, timeout=15.0)
@@ -250,18 +253,21 @@ def test_send_flow_registration_status_detection(http, ui_url, apex_tcp):
 def test_send_run_is_persisted_under_runs(http, ui_url, apex_tcp):
     apex_host, apex_port = apex_tcp
     node_id = str(uuid.uuid4())
-    r = http.post(f"{ui_url}/api/send", json={
+    r = http.post(f"{ui_url}/api/run", json={
         "host": apex_host, "port": apex_port, "node_id": node_id,
-        "template_name": "registration",
-        "raw_json": _template_raw(http, ui_url, "registration"),
-        "recv_timeout_s": 5, "drain_after_s": 0.5,
+        "steps": [{
+            "template_name": "registration",
+            "raw_json": _template_raw(http, ui_url, "registration"),
+            "recv_timeout_s": 5, "drain_after_s": 0.5,
+        }],
     })
     run_id = r.json()["run_id"]
     saved = http.get(f"{ui_url}/api/runs/{run_id}").json()
     assert saved["run_id"] == run_id
-    assert saved["template"] == "registration"
-    sent = saved.get("sent_message", {})
-    assert sent.get("node_id") == node_id or sent.get("nodeId") == node_id
+    assert saved["template"] == "flow:registration"
+    sent = next((t for t in saved["transcript"] if t["direction"] == "sent"), None)
+    assert sent is not None
+    assert sent["message"].get("node_id") == node_id
 
 
 # ---------- SAPIENT v2 per-content-type send -----------------------------
@@ -306,7 +312,7 @@ def test_sapient_v2_send_each_message_type(http, ui_url, apex_tcp, content_type)
             "recv_timeout_s": 1, "drain_after_s": 0.5,
         })
 
-    r = http.post(f"{ui_url}/api/send_flow", json={
+    r = http.post(f"{ui_url}/api/run", json={
         "host": apex_host, "port": apex_port, "node_id": node_id,
         "validate_before_send": False, "steps": steps,
     }, timeout=15.0)

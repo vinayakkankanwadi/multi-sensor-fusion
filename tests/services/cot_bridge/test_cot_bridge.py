@@ -70,7 +70,7 @@ def test_registration_and_detection_emit_cot(http, ui_url, apex_tcp,
          "raw_json": _template_raw(http, ui_url, "detection_report"),
          "wait_for": None, "recv_timeout_s": 2, "drain_after_s": 0.5},
     ]
-    r = http.post(f"{ui_url}/api/send_flow", json={
+    r = http.post(f"{ui_url}/api/run", json={
         "host": apex_host, "port": apex_port, "node_id": node_id,
         "validate_before_send": False, "steps": steps,
     }, timeout=15.0)

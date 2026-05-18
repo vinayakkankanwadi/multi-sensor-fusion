@@ -29,7 +29,7 @@ import sapient_encode_decode_msg as framer
 from . import templates, validators
 
 log = logging.getLogger(__name__)
-RUNS_DIR = Path("/app/runs")
+RUNS_DIR = Path("/app/data/runs")
 
 
 @dataclass

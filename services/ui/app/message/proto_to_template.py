@@ -34,7 +34,7 @@ from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
 log = logging.getLogger(__name__)
 
-DEFAULT_TEMPLATES_DIR = Path("/app/templates")
+DEFAULT_TEMPLATES_DIR = Path("/app/data/templates")
 PLACEHOLDER_NODE_ID = "00000000-0000-0000-0000-000000000000"
 
 # Fields the reference Windows validator requires that are not marked

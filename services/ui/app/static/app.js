@@ -79,9 +79,9 @@ async function loadTemplates() {
     return;
   }
   if (!currentTemplate) {
-    selectTemplate(templates[0].name);
+    setEditorTemplate(templates[0].name);
   } else if (templates.find((t) => t.name === currentTemplate)) {
-    selectTemplate(currentTemplate);
+    setEditorTemplate(currentTemplate);
   }
 }
 
@@ -93,6 +93,10 @@ async function selectTemplate(name) {
     addFlowStep(name);
     return;
   }
+  await setEditorTemplate(name);
+}
+
+async function setEditorTemplate(name) {
   currentTemplate = name;
   document.querySelectorAll("#template-list li").forEach((li) => {
     li.classList.toggle("active", li.dataset.name === name);
@@ -206,7 +210,7 @@ async function runFlow() {
         drain_after_s: s.drain_after_s,
       })),
     };
-    const r = await fetch("/api/send_flow", {
+    const r = await fetch("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -322,11 +326,13 @@ function buildSendBody() {
     host: mw.host,
     port: mw.port,
     node_id: ensureUUID(),
-    template_name: currentTemplate,
-    raw_json: $("#editor").value,
-    recv_timeout_s: Number($("#recv-timeout").value),
-    drain_after_s: Number($("#drain-after").value),
     validate_before_send: $("#validate-before").checked,
+    steps: [{
+      template_name: currentTemplate,
+      raw_json: $("#editor").value,
+      recv_timeout_s: Number($("#recv-timeout").value),
+      drain_after_s: Number($("#drain-after").value),
+    }],
   };
 }
 
@@ -336,7 +342,7 @@ async function sendTemplate() {
   $("#send-status").textContent = "sending...";
   $("#send").disabled = true;
   try {
-    const r = await fetch("/api/send", {
+    const r = await fetch("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -347,7 +353,7 @@ async function sendTemplate() {
       return;
     }
     const result = await r.json();
-    showResult(result);
+    showFlowResult(result);
     await loadRecentRuns();
   } catch (exc) {
     showError(String(exc));
@@ -553,7 +559,9 @@ async function loadRecentRuns() {
       <td><span class="muted small">${target}</span></td>`;
     tr.addEventListener("click", async () => {
       const r2 = await fetch(`/api/runs/${encodeURIComponent(run.run_id)}`);
-      if (r2.ok) showResult(await r2.json());
+      if (!r2.ok) return;
+      const data = await r2.json();
+      (data.kind === "flow" ? showFlowResult : showResult)(data);
     });
     tbody.appendChild(tr);
   }

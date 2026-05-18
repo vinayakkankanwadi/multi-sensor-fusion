@@ -28,7 +28,7 @@ from google.protobuf import json_format
 
 from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
-TEMPLATES_DIR = Path("/app/templates")
+TEMPLATES_DIR = Path("/app/data/templates")
 
 _PLACEHOLDER_RE = re.compile(r"\{\{(NOW|ULID|NODE_ID|GPS_LAT|GPS_LON|GPS_ALT)\}\}")
 

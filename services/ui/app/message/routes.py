@@ -1,4 +1,4 @@
-"""Message drawer — templates, single send, multi-step flow, validate, runs."""
+"""Message drawer — templates, flows, validate, runs."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from . import flow, gps, proto_to_template, runner, templates, validators
+from . import flow, gps, proto_to_template, templates, validators
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["message"])
-RUNS_DIR = Path("/app/runs")
+RUNS_DIR = Path("/app/data/runs")
 
 
 # ---------- Templates ----------------------------------------------------
@@ -83,63 +83,7 @@ def validate(req: ValidateRequest) -> dict:
             "content": message.WhichOneof("content")}
 
 
-# ---------- Send (single message) ---------------------------------------
-
-class SendRequest(BaseModel):
-    host: str = Field(..., min_length=1, description="Target IP or hostname")
-    port: int = Field(..., ge=1, le=65535)
-    node_id: str = Field(..., description="UUID node_id used for {{NODE_ID}}")
-    template_name: str = Field(..., description="Template stem")
-    raw_json: str | None = Field(None, description="UI-edited body override")
-    recv_timeout_s: float = Field(5.0, ge=0.0, le=60.0)
-    drain_after_s: float = Field(1.0, ge=0.0, le=60.0)
-    validate_before_send: bool = Field(False,
-        description="If true, run validator and refuse to send on failure")
-
-
-@router.post("/api/send")
-async def send(req: SendRequest) -> dict:
-    host = (req.host or "").strip()
-    if not host:
-        raise HTTPException(status_code=400,
-                            detail="host is required (set Host before clicking Send)")
-    fix = await gps.fetch_current()
-    try:
-        text = (req.raw_json if req.raw_json is not None
-                else templates.get_template(req.template_name))
-        message = templates.render(text, node_id=req.node_id, gps_fix=fix)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"render: {exc}")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"template parse failed: {exc}")
-
-    validation_errors: list[str] = []
-    if req.validate_before_send:
-        validation_errors = validators.validate(message)
-        if validation_errors:
-            return {
-                "run_id": None, "host": req.host, "port": req.port,
-                "template": req.template_name,
-                "error": "validation failed (client-side); not sent",
-                "validation_errors": validation_errors,
-                "transcript": [],
-            }
-
-    payload = message.SerializeToString()
-    decoded = templates.message_to_dict(message)
-    decoded["_content"] = message.WhichOneof("content")
-    result = await runner.send_one(
-        host=host, port=req.port, payload=payload,
-        template_name=req.template_name, decoded_sent=decoded,
-        recv_timeout_s=req.recv_timeout_s, drain_after_s=req.drain_after_s,
-    )
-    result["validation_errors"] = validation_errors
-    return result
-
-
-# ---------- Send flow (multi-step over a single TCP connection) ---------
+# ---------- Flow run (1-or-more steps over one TCP connection) ----------
 
 class FlowStep(BaseModel):
     template_name: str
@@ -158,8 +102,7 @@ class FlowRequest(BaseModel):
     validate_before_send: bool = False
 
 
-@router.post("/api/send_flow")
-async def send_flow(req: FlowRequest) -> dict:
+async def _run_flow_impl(req: FlowRequest) -> dict:
     if not req.steps:
         raise HTTPException(status_code=400, detail="flow needs at least one step")
     fix = await gps.fetch_current()
@@ -177,6 +120,11 @@ async def send_flow(req: FlowRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/api/run")
+async def run(req: FlowRequest) -> dict:
+    return await _run_flow_impl(req)
 
 
 # ---------- Runs --------------------------------------------------------

@@ -59,8 +59,7 @@ services:
       NODES_URL:      "http://127.0.0.1:8093"
       REGRESSION_URL: "http://127.0.0.1:8094"
     volumes:
-      - ./services/ui/templates:/app/templates
-      - ./services/ui/runs:/app/runs
+      - ./services/ui/data:/app/data
     restart: unless-stopped
 
   gps:

@@ -50,7 +50,7 @@
     {
       "type": "Parent",
       "host": "192.168.201.152",
-      "port": 14000,
+      "port": 14005,
       "outbound": true,
       "forwardAll": true,
       "format": "PROTO",
@@ -78,7 +78,7 @@
     "startingID": 1000001
   },
   "allowPeerRegistration": true,
-  "sendRegistrationAck": true,
+  "sendRegistrationAck": false,
   "rollover": {
     "enable": true,
     "unit": "days",

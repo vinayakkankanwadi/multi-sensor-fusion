@@ -9,6 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # Pull the Apex source from the vendored folder via additional_contexts.
 COPY --from=apex-src . /app/
 
+# Local patches over vendored Apex. Each is a Python script that does an
+# idempotent in-place edit. Rationale is at the top of each .py file.
+COPY patches/ /app/_patches/
+RUN set -e; for p in /app/_patches/*.py; do \
+        echo "==> applying $(basename "$p")"; \
+        python "$p"; \
+    done
+
 # Install the headless dependency subset (skip PySide6 GUI etc.).
 RUN pip install --no-cache-dir \
         'protobuf>=4.25.1,<5' \

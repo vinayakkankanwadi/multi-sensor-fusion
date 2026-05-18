@@ -6,17 +6,13 @@ A template is a JSON file under /app/templates/ representing a SapientMessage
     {{NOW}}      → current UTC timestamp in RFC3339, e.g. 2026-05-03T12:34:56.000Z
     {{ULID}}     → a freshly generated ULID (each occurrence is independent)
     {{NODE_ID}}  → the node UUID configured by the UI
-    {{GPS_LAT}}  → latitude  in decimal degrees (live from the router GPS)
-    {{GPS_LON}}  → longitude in decimal degrees
-    {{GPS_ALT}}  → altitude in metres (or 0.0 if not reported)
+    {{GPS_LAT}}  → latitude  in decimal degrees (from gps_fix, or 0.0 if None)
+    {{GPS_LON}}  → longitude
+    {{GPS_ALT}}  → altitude in metres
 
-GPS placeholders fall back to 0.0 if the router credentials aren't set or
-the router has no fix yet. The substitute call is non-blocking — GPS values
-are cached for ~2 seconds to avoid hitting the router on every send.
-
-Templates pass through `_substitute(template_text, ctx)` before being parsed
-into a SapientMessage protobuf. Adding a new template means dropping a JSON
-file into the templates/ directory — no code changes required.
+GPS placeholders fall back to 0.0 when no fix is supplied. Callers that need
+live GPS pass the fix in: send / flow handlers fetch /gps/current from the
+gps service once per request and hand the dict to `render()`.
 """
 
 from __future__ import annotations
@@ -35,10 +31,6 @@ from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 TEMPLATES_DIR = Path("/app/templates")
 
 _PLACEHOLDER_RE = re.compile(r"\{\{(NOW|ULID|NODE_ID|GPS_LAT|GPS_LON|GPS_ALT)\}\}")
-
-# Cached most-recent GPS fix to avoid hammering the router on every render.
-_GPS_CACHE: dict = {"t": 0.0, "fix": None}
-_GPS_CACHE_TTL_S = 2.0
 
 
 def list_templates() -> list[dict]:
@@ -66,47 +58,41 @@ def get_template(name: str) -> str:
     return path.read_text()
 
 
-def _gps_values() -> tuple[float, float, float]:
-    """Return (lat, lon, alt) from the live NMEA fix; (0,0,0) if no fix."""
-    from . import gps as _gps
-    f = _gps.current_fix()
-    if not f.ok:
-        return 0.0, 0.0, 0.0
-    return (f.latitude or 0.0, f.longitude or 0.0, f.altitude or 0.0)
-
-
-def _substitute(text: str, *, node_id: str) -> str:
+def _substitute(text: str, *, node_id: str,
+                gps_fix: dict | None) -> str:
     """Replace placeholders with concrete values. Each {{ULID}} is unique."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    gps_evaluated = False
-    lat = lon = alt = 0.0
+    if gps_fix and gps_fix.get("ok"):
+        lat = float(gps_fix.get("latitude")  or 0.0)
+        lon = float(gps_fix.get("longitude") or 0.0)
+        alt = float(gps_fix.get("altitude")  or 0.0)
+    else:
+        lat = lon = alt = 0.0
 
     def repl(match: re.Match) -> str:
-        nonlocal gps_evaluated, lat, lon, alt
         kind = match.group(1)
-        if kind == "NOW":
-            return now
-        if kind == "ULID":
-            return str(ulid.ULID())
-        if kind == "NODE_ID":
-            return node_id
-        if kind in ("GPS_LAT", "GPS_LON", "GPS_ALT"):
-            if not gps_evaluated:
-                lat, lon, alt = _gps_values()
-                gps_evaluated = True
-            return {"GPS_LAT": f"{lat:.7f}",
-                    "GPS_LON": f"{lon:.7f}",
-                    "GPS_ALT": f"{alt:.3f}"}[kind]
+        if kind == "NOW":     return now
+        if kind == "ULID":    return str(ulid.ULID())
+        if kind == "NODE_ID": return node_id
+        if kind == "GPS_LAT": return f"{lat:.7f}"
+        if kind == "GPS_LON": return f"{lon:.7f}"
+        if kind == "GPS_ALT": return f"{alt:.3f}"
         return match.group(0)
 
     return _PLACEHOLDER_RE.sub(repl, text)
 
 
-def render(template_text: str, *, node_id: str) -> _msg.SapientMessage:
-    """Substitute placeholders, then parse JSON into a SapientMessage."""
+def render(template_text: str, *,
+           node_id: str,
+           gps_fix: dict | None = None) -> _msg.SapientMessage:
+    """Substitute placeholders, then parse JSON into a SapientMessage.
+
+    `gps_fix` is the dict returned by the gps service's /gps/current.
+    Pass None for callers that don't need live coordinates (e.g. /api/validate).
+    """
     if not _is_valid_uuid(node_id):
         raise ValueError(f"node_id is not a valid UUID: {node_id!r}")
-    text = _substitute(template_text, node_id=node_id)
+    text = _substitute(template_text, node_id=node_id, gps_fix=gps_fix)
     msg = _msg.SapientMessage()
     json_format.Parse(text, msg, ignore_unknown_fields=False)
     return msg

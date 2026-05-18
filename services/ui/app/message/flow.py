@@ -26,7 +26,7 @@ from sapient_msg.bsi_flex_335_v2_0 import sapient_message_pb2 as _msg
 
 import sapient_encode_decode_msg as framer
 
-from . import templates_loader, validators
+from . import templates, validators
 
 log = logging.getLogger(__name__)
 RUNS_DIR = Path("/app/runs")
@@ -49,7 +49,8 @@ def _utc_iso() -> str:
 async def run_flow(*, host: str, port: int, node_id: str,
                    steps: list[Step],
                    validate_before_send: bool = False,
-                   connect_timeout_s: float = 5.0) -> dict:
+                   connect_timeout_s: float = 5.0,
+                   gps_fix: dict | None = None) -> dict:
     """Open one TCP connection; run the steps in order; return a transcript."""
     if not host:
         raise ValueError("host is required")
@@ -125,8 +126,8 @@ async def run_flow(*, host: str, port: int, node_id: str,
             # Render.
             try:
                 text = step.raw_json if step.raw_json is not None \
-                    else templates_loader.get_template(step.template_name)
-                message = templates_loader.render(text, node_id=node_id)
+                    else templates.get_template(step.template_name)
+                message = templates.render(text, node_id=node_id, gps_fix=gps_fix)
             except FileNotFoundError as exc:
                 step_record["error"] = f"template not found: {exc}"
                 step_results.append(step_record)
@@ -150,7 +151,7 @@ async def run_flow(*, host: str, port: int, node_id: str,
 
             # Send.
             payload = message.SerializeToString()
-            decoded = templates_loader.message_to_dict(message)
+            decoded = templates.message_to_dict(message)
             stamp("sent", message.WhichOneof("content"), payload, decoded, idx)
             try:
                 writer.write(framer.encode(payload))
@@ -176,7 +177,7 @@ async def run_flow(*, host: str, port: int, node_id: str,
                     break
                 content = m.WhichOneof("content")
                 stamp("recv", content, payload,
-                      templates_loader.message_to_dict(m), idx)
+                      templates.message_to_dict(m), idx)
                 step_record["recv_count"] += 1
                 if step.wait_for and content == step.wait_for:
                     step_record["matched_wait_for"] = content
@@ -197,7 +198,7 @@ async def run_flow(*, host: str, port: int, node_id: str,
                     except asyncio.TimeoutError:
                         break
                     stamp("recv", m.WhichOneof("content"), payload,
-                          templates_loader.message_to_dict(m), idx)
+                          templates.message_to_dict(m), idx)
                     step_record["recv_count"] += 1
 
             step_record["elapsed_ms"] = round(

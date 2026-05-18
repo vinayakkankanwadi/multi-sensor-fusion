@@ -17,8 +17,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# ui runtime artifacts
-services/ui/runs/
+# ui runtime data — bind-mounted, never tracked. Templates are
+# auto-seeded on first startup from the SAPIENT .proto schema; runs
+# are produced per flow execution.
+services/ui/data/
 
 # generated SAPIENT proto bindings — regenerate via
 # `python libs/sapient-proto-to-msg/sapient_proto_to_msg.py`

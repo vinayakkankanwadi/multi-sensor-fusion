@@ -1,8 +1,0 @@
-{
-  "timestamp": "{{NOW}}",
-  "node_id": "{{NODE_ID}}",
-  "task": {
-    "task_id": "{{ULID}}",
-    "control": "CONTROL_START"
-  }
-}

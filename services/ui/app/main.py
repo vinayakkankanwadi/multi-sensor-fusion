@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .message import proto_to_template, templates
 from .message.routes import router as message_router
 from .nodes.routes   import router as nodes_router
 from .tests.routes   import router as tests_router
@@ -30,9 +31,23 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger(__name__)
 
 
+def _seed_templates_if_empty() -> None:
+    """First-launch init: if data/templates/ has no .json files, build the
+    canonical set from the SAPIENT .proto schema. Lets us keep data/ out
+    of git — fresh clones (and fresh `docker compose up` against an empty
+    bind mount) get a working set automatically."""
+    out = templates.TEMPLATES_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    if any(out.glob("*.json")):
+        return
+    written = proto_to_template.regenerate_all(out)
+    log.info("ui startup: seeded %d templates into %s", len(written), out)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     log.info("ui startup")
+    _seed_templates_if_empty()
     yield
 
 

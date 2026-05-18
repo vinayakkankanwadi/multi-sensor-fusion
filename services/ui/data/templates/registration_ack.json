@@ -1,7 +1,0 @@
-{
-  "timestamp": "{{NOW}}",
-  "node_id": "{{NODE_ID}}",
-  "registration_ack": {
-    "acceptance": true
-  }
-}

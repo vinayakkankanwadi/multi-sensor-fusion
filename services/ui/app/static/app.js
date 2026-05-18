@@ -87,22 +87,40 @@ async function loadTemplates() {
 
 let mode = "single";  // "single" or "flow"
 let flowSteps = [];   // [{template_name, wait_for, recv_timeout_s, drain_after_s}]
+const editBuffer = {};  // template_name -> in-progress editor text
 
-async function selectTemplate(name) {
-  if (mode === "flow") {
-    addFlowStep(name);
-    return;
-  }
-  await setEditorTemplate(name);
-}
-
-async function setEditorTemplate(name) {
-  currentTemplate = name;
+function highlightTemplate(name) {
   document.querySelectorAll("#template-list li").forEach((li) => {
     li.classList.toggle("active", li.dataset.name === name);
   });
+}
+
+async function selectTemplate(name) {
+  highlightTemplate(name);
+  // Always load into the editor so the body is visible and editable in
+  // both modes. In flow mode, also append it as a step — the per-template
+  // editBuffer captures any in-progress edits and they're sent at run time.
+  await setEditorTemplate(name);
+  if (mode === "flow") {
+    addFlowStep(name);
+  }
+}
+
+async function setEditorTemplate(name) {
+  // Preserve in-progress edits in the previous template before swapping.
+  // Cleared explicitly by "Reload from disk", or implicitly on Clear /
+  // Build from .proto (the canonical source has changed).
+  if (currentTemplate && currentTemplate !== name) {
+    editBuffer[currentTemplate] = $("#editor").value;
+  }
+  currentTemplate = name;
+  highlightTemplate(name);
   $("#editor-title").textContent = name;
-  await reloadFromDisk();
+  if (name in editBuffer) {
+    $("#editor").value = editBuffer[name];
+  } else {
+    await reloadFromDisk();
+  }
   $("#validate-only").disabled = false;
   $("#reload-template").disabled = false;
   refreshSendButton();
@@ -112,14 +130,18 @@ function setMode(newMode) {
   mode = newMode;
   $("#mode-single").classList.toggle("active", mode === "single");
   $("#mode-flow").classList.toggle("active", mode === "flow");
-  $("#single-pane").hidden = mode !== "single";
+  // Editor (#single-pane) stays visible in both modes so users can preview
+  // and edit message bodies. Send is single-only; Run flow / Clear belong
+  // to flow-pane.
+  $("#single-pane").hidden = false;
   $("#flow-pane").hidden = mode !== "flow";
-  // Highlight sidebar items differently in flow mode (click = add).
+  $("#send").hidden = mode === "flow";
   document.querySelectorAll("#template-list li").forEach((li) => {
     li.title = mode === "flow"
-      ? "click to ADD as the next flow step"
+      ? "click to load into the editor AND append as the next flow step"
       : "click to load into the editor";
   });
+  refreshSendButton();
 }
 
 const ACK_FOR = {
@@ -198,17 +220,28 @@ async function runFlow() {
   $("#flow-status").textContent = "running flow...";
   $("#run-flow").disabled = true;
   try {
+    // Snapshot the editor's current text into the buffer so the currently
+    // visible template's edits are included alongside any earlier ones.
+    if (currentTemplate) {
+      editBuffer[currentTemplate] = $("#editor").value;
+    }
     const body = {
       host: mw.host,
       port: mw.port,
       node_id: ensureUUID(),
       validate_before_send: $("#validate-before").checked,
-      steps: flowSteps.map((s) => ({
-        template_name: s.template_name,
-        wait_for: s.wait_for || null,
-        recv_timeout_s: s.recv_timeout_s,
-        drain_after_s: s.drain_after_s,
-      })),
+      steps: flowSteps.map((s) => {
+        const step = {
+          template_name: s.template_name,
+          wait_for: s.wait_for || null,
+          recv_timeout_s: s.recv_timeout_s,
+          drain_after_s: s.drain_after_s,
+        };
+        if (s.template_name in editBuffer) {
+          step.raw_json = editBuffer[s.template_name];
+        }
+        return step;
+      }),
     };
     const r = await fetch("/api/run", {
       method: "POST",
@@ -310,6 +343,7 @@ function applyToggleSeverity(toggleId, sev) {
 
 async function reloadFromDisk() {
   if (!currentTemplate) return;
+  delete editBuffer[currentTemplate];
   const r = await fetch(`/api/templates/${encodeURIComponent(currentTemplate)}`);
   if (!r.ok) {
     $("#editor").value = `// load failed: ${r.status}`;
@@ -411,6 +445,7 @@ async function regenerateTemplates() {
     }
     const data = await r.json();
     status.textContent = `built ${data.count} templates`;
+    for (const k of Object.keys(editBuffer)) delete editBuffer[k];
     await loadTemplates();
   } catch (exc) {
     status.textContent = `build failed: ${exc}`;
@@ -434,6 +469,7 @@ async function clearTemplates() {
     }
     const data = await r.json();
     status.textContent = `cleared ${data.count} templates`;
+    for (const k of Object.keys(editBuffer)) delete editBuffer[k];
     currentTemplate = null;
     $("#editor").value = "";
     $("#editor-title").textContent = "";

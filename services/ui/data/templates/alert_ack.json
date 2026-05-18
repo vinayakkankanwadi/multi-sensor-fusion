@@ -1,8 +1,0 @@
-{
-  "timestamp": "{{NOW}}",
-  "node_id": "{{NODE_ID}}",
-  "alert_ack": {
-    "alert_id": "{{ULID}}",
-    "alert_ack_status": "ALERT_ACK_STATUS_ACCEPTED"
-  }
-}

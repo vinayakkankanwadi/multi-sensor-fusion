@@ -669,6 +669,7 @@ function renderServiceList() {
 const NODE_EXPANDERS = [
   { match: (n) => n.name === "Apex Local",  render: renderApexExpansion },
   { match: (n) => n.name === "BSI Windows", render: renderBSIExpansion  },
+  { match: (n) => n.type === "tak-server",  render: renderTAKExpansion  },
 ];
 
 function expanderFor(node) {
@@ -702,6 +703,31 @@ async function renderApexExpansion(_node) {
     <div class="kv"><span>recording</span><span>${recRow}</span></div>
     <div class="node-actions">${guiBtn}${sqlBtn}</div>
     ${sqlFrame}
+  `;
+}
+
+async function renderTAKExpansion(_node) {
+  const state = await fetch("/api/tak/state").then((r) => r.ok ? r.json() : { available: false, reason: `HTTP ${r.status}` });
+  if (!state.available) {
+    return `
+      <div class="kv"><span>status</span><span><span class="dot status-warn"></span> TAK Server unreachable: ${state.reason || "?"}</span></div>
+    `;
+  }
+  const adminDot  = state.admin_alive  ? "status-ok" : "status-warn";
+  const streamDot = state.stream_alive ? "status-ok" : "status-warn";
+  const stateRow =
+    `<span class="dot ${adminDot}"></span> admin :${state.admin_port} ` +
+    `${state.admin_alive ? "alive" : "down"} · ` +
+    `<span class="dot ${streamDot}"></span> streaming :${state.stream_port} ` +
+    `${state.stream_alive ? "alive" : "down"}`;
+  const url = state.webtak_url;
+  return `
+    <div class="kv"><span>status</span><span>${stateRow}</span></div>
+    <div class="kv"><span>webtak</span><code>${url}</code></div>
+    <div class="node-actions">
+      <a class="node-action-btn" href="${url}" target="_blank" rel="noopener">Open WebTAK ↗</a>
+    </div>
+    <iframe class="node-iframe" src="${url}" title="WebTAK"></iframe>
   `;
 }
 

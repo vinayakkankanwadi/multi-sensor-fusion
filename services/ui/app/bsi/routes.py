@@ -50,22 +50,26 @@ class BSIController:
     # ------ Reachability --------------------------------------------------
 
     async def state(self) -> dict:
-        """One-glance: is BSI's Postgres reachable on the LAN?"""
+        """One-glance: is BSI's Postgres reachable on the LAN?
+
+        Uses the node entry's admin_port (the Postgres port) — port is
+        reserved for the primary SAPIENT listener that the UI sends to.
+        """
         n = await self._node()
         host = n.get("host")
-        port = int(n.get("port") or 5432)
+        pg_port = int(n.get("admin_port") or 5432)
         try:
-            with socket.create_connection((host, port), timeout=1.5):
+            with socket.create_connection((host, pg_port), timeout=1.5):
                 pass
         except (OSError, socket.timeout) as exc:
             return {
                 "available": False,
-                "host": host, "port": port,
+                "host": host, "port": pg_port,
                 "reason": str(exc) or "timeout",
             }
         return {
             "available": True,
-            "host": host, "port": port,
+            "host": host, "port": pg_port,
             "database": n.get("db_database"),
         }
 
@@ -110,7 +114,7 @@ class BSIController:
         n = await self._node()
         env_overrides = {
             "BSI_HOST":    n.get("host"),
-            "BSI_PG_PORT": n.get("port") or 5432,
+            "BSI_PG_PORT": n.get("admin_port") or 5432,
             "BSI_PG_USER": n.get("db_user")     or "postgres",
             "BSI_PG_PASS": n.get("db_password") or "password",
             "BSI_PG_DB":   n.get("db_database") or "sapientBSIFlex335v2",

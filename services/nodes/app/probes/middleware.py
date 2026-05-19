@@ -52,7 +52,11 @@ async def probe(entry: dict, ctx: dict) -> dict:
             "severity": "unknown",
             "ok": False,
         }
-    res = await asyncio.to_thread(_tcp_probe, entry["host"], int(entry["port"]))
+    # Prefer admin_port when set: lets `port` remain the primary SAPIENT
+    # listener (where the UI sends) while we probe an auxiliary one (e.g.
+    # BSI uses port=14005 SAPIENT + admin_port=5432 Postgres for liveness).
+    probe_port = int(entry.get("admin_port") or entry["port"])
+    res = await asyncio.to_thread(_tcp_probe, entry["host"], probe_port)
     return {
         "kind": entry.get("kind"),
         "status": res,

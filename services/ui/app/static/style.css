@@ -277,6 +277,8 @@ button.ghost.small.status-fail::before { background: #f85149; }
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
 }
 .node-row-details .node-action-btn:hover    { background: #388bfd; }
 .node-row-details .node-action-btn:disabled { background: #30363d; cursor: progress; }

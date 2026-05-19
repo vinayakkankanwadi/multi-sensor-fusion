@@ -26,13 +26,14 @@
     "kind": "windows-bsi-harness",
     "name": "BSI Windows",
     "host": "192.168.201.152",
-    "port": 5432,
+    "port": 14005,
+    "admin_port": 5432,
     "probe": true,
     "db_kind": "postgres",
     "db_user": "postgres",
     "db_password": "password",
     "db_database": "sapientBSIFlex335v2",
-    "description": "Windows BSI Flex 335 v2 reference harness. Reachability probe targets Postgres (:5432) rather than the SAPIENT DataAgent receiver \u2014 the harness logs each bare-TCP probe to its receiver ports as an error."
+    "description": "Windows BSI Flex 335 v2 reference harness. `port` is the SAPIENT ASM_DA listener (where the UI sends). `admin_port` is the Postgres archive (where the liveness probe targets, because bare-TCP probes to :14005 register as receiver errors in the harness)."
   },
   {
     "id": "ui",
@@ -95,6 +96,9 @@
     "host": "192.168.201.222",
     "port": 6969,
     "protocol": "udp",
-    "description": "TAK Server CoT ingest. cot-bridge UDP-sends here. Status is 'unknown' by design \u2014 UDP has no handshake. Add probe_kind=tcp + admin_port (e.g. 8089) to TCP-probe the TAK admin port instead."
+    "probe": true,
+    "probe_kind": "tcp",
+    "admin_port": 8443,
+    "description": "TAK Server CoT ingest on :6969 UDP (where cot-bridge sends). Liveness probe targets :8443 HTTPS admin (mutual TLS, but a TCP-connect is enough to say the server is up). WebTAK lives at /webtak/index.html on the same port."
   }
 ]

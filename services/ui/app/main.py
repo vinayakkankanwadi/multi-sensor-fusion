@@ -26,6 +26,7 @@ from .bsi.routes     import router as bsi_router
 from .message import proto_to_template, templates
 from .message.routes import router as message_router
 from .nodes.routes   import router as nodes_router
+from .tak.routes     import router as tak_router
 from .tests.routes   import router as tests_router
 
 logging.basicConfig(level=logging.INFO,
@@ -76,6 +77,7 @@ def health() -> dict:
 
 app.include_router(apex_router)
 app.include_router(bsi_router)
+app.include_router(tak_router)
 app.include_router(nodes_router)
 app.include_router(message_router)
 app.include_router(tests_router)

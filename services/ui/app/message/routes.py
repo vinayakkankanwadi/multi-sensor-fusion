@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from . import flow, gps, proto_to_template, templates, validators
+from . import flow, proto_to_template, templates, validators
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["message"])
@@ -68,12 +68,12 @@ class ValidateRequest(BaseModel):
 
 
 @router.post("/api/validate")
-def validate(req: ValidateRequest) -> dict:
+async def validate(req: ValidateRequest) -> dict:
     """Run the client-side validator against a rendered template."""
     try:
         text = (req.raw_json if req.raw_json is not None
                 else templates.get_template(req.template_name))
-        message = templates.render(text, node_id=req.node_id)
+        message = await templates.render(text, node_id=req.node_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -105,7 +105,6 @@ class FlowRequest(BaseModel):
 async def _run_flow_impl(req: FlowRequest) -> dict:
     if not req.steps:
         raise HTTPException(status_code=400, detail="flow needs at least one step")
-    fix = await gps.fetch_current()
     steps = [
         flow.Step(template_name=s.template_name, raw_json=s.raw_json,
                   wait_for=s.wait_for, recv_timeout_s=s.recv_timeout_s,
@@ -116,7 +115,6 @@ async def _run_flow_impl(req: FlowRequest) -> dict:
         return await flow.run_flow(
             host=req.host.strip(), port=req.port, node_id=req.node_id,
             steps=steps, validate_before_send=req.validate_before_send,
-            gps_fix=fix,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

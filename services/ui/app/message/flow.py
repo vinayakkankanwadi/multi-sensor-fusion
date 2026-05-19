@@ -49,8 +49,7 @@ def _utc_iso() -> str:
 async def run_flow(*, host: str, port: int, node_id: str,
                    steps: list[Step],
                    validate_before_send: bool = False,
-                   connect_timeout_s: float = 5.0,
-                   gps_fix: dict | None = None) -> dict:
+                   connect_timeout_s: float = 5.0) -> dict:
     """Open one TCP connection; run the steps in order; return a transcript."""
     if not host:
         raise ValueError("host is required")
@@ -127,7 +126,7 @@ async def run_flow(*, host: str, port: int, node_id: str,
             try:
                 text = step.raw_json if step.raw_json is not None \
                     else templates.get_template(step.template_name)
-                message = templates.render(text, node_id=node_id, gps_fix=gps_fix)
+                message = await templates.render(text, node_id=node_id)
             except FileNotFoundError as exc:
                 step_record["error"] = f"template not found: {exc}"
                 step_results.append(step_record)

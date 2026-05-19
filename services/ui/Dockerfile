@@ -3,8 +3,25 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Docker CLI + compose plugin for the apex controller, which shells out
+# to `docker compose` to lifecycle the apex-gui and apex-sqlite-web
+# services. Static binaries from docker's own release URL — no apt repo
+# setup, no daemon installed inside the container; the host's daemon is
+# reached via the /var/run/docker.sock bind mount declared in compose.
+ARG DOCKER_VERSION=27.3.1
+ARG COMPOSE_VERSION=2.29.7
+RUN ARCH="$(uname -m)" && \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz" \
+      | tar -xz -C /usr/local/bin --strip-components=1 docker/docker && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose && \
+    docker --version && docker compose version
 
 # Python deps (cache layer).
 COPY requirements.txt /app/requirements.txt

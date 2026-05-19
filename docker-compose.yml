@@ -37,6 +37,12 @@
 #   docker compose exec regression pytest /work/tests   # ad-hoc CLI run
 #   curl -X POST http://127.0.0.1:8094/run               # via HTTP
 
+# Pin the compose project name so commands run from inside the UI
+# container (where the bind-mounted /work parents to a different basename
+# than the host's project dir) operate on the SAME set of containers as
+# `docker compose` invoked from the host.
+name: multi-sensor-fusion
+
 services:
 
   ui:
@@ -58,12 +64,34 @@ services:
       NTP_URL:        "http://127.0.0.1:8091"
       NODES_URL:      "http://127.0.0.1:8093"
       REGRESSION_URL: "http://127.0.0.1:8094"
+      # Propagate the host's X11 cookies into the UI container so that
+      # when the backend shells out to `docker compose up apex-gui`, the
+      # apex-gui service inherits the right DISPLAY and can draw on the
+      # operator's desktop. WAYLAND_DISPLAY covers Wayland sessions.
+      DISPLAY:         "${DISPLAY:-}"
+      WAYLAND_DISPLAY: "${WAYLAND_DISPLAY:-}"
+      XAUTHORITY:      "${XAUTHORITY:-}"
+      # The backend uses this to point `docker compose --project-directory`
+      # at the SAME absolute path the host uses, so bind-mount paths in
+      # this compose file resolve identically from both contexts. PWD
+      # is needed because the compose file uses ${PWD}-style interpolation
+      # in volume specs, which compose reads from the calling shell's env.
+      PROJECT_DIR:     "${PWD}"
+      PWD:             "${PWD}"
     volumes:
       - ./services/ui/data:/app/data
-      # Read-only-ish view onto Apex's archive — used by /api/apex/stats.
-      # Same dir Apex writes to; UI never writes, but SQLite WAL mode
-      # touches lock files so this can't be :ro.
+      # Read view onto Apex's archive — backs /api/apex/state. Same dir
+      # Apex writes to; SQLite WAL mode touches lock files even on read,
+      # so this can't be :ro.
       - ./services/apex/data:/app/apex-archive
+      # Docker access from the UI backend: lets /api/apex/gui/* and
+      # /api/apex/sqlite/* shell out to `docker compose` against the host
+      # daemon. Mount the host project root at the SAME absolute path
+      # inside the container so bind-mount paths in this compose file
+      # (e.g. ./services/apex/data) resolve identically whether compose
+      # is run from the host or from inside this container.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}:ro
     restart: unless-stopped
 
   gps:
@@ -166,6 +194,30 @@ services:
       - ./services/apex/data:/app/data
     depends_on:
       - apex
+
+  # Opt-in: web-based SQLite browser over Apex's archive. Triggered
+  # by the "Open Apex SQLite" button in the Nodes drawer's Apex panel
+  # (which POSTs /api/apex/sqlite/start). Read-only mount so operators
+  # can browse and query without risk of mutating Apex's archive.
+  #
+  # Also runnable from the CLI:
+  #     docker compose --profile sqlite-ui up -d apex-sqlite-web
+  # then http://localhost:8095
+  apex-sqlite-web:
+    profiles: ["sqlite-ui"]
+    image: coleifer/sqlite-web:latest
+    container_name: apex-sqlite-web
+    network_mode: host
+    # Resolve "latest" at container start (filenames sort by timestamp).
+    # This means rolling over to a new day's archive requires a container
+    # restart to pick up the new file — operator clicks Stop / Open again.
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'exec sqlite_web --host 0.0.0.0 --port 8095 --read-only --no-browser
+         "$$(ls /data/data-*.sqlite | tail -1)"'
+    volumes:
+      - ./services/apex/data:/data:ro
+    restart: unless-stopped
 
   # Opt-in: Apex's Qt6 desktop GUI (database/connection/message viewer).
   # Same image as the middleware, different entry point. Forwards the

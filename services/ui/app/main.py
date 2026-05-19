@@ -14,7 +14,6 @@ includes them and serves the static SPA + a top-level /api/health.
 from __future__ import annotations
 
 import logging
-import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,13 +21,11 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .apex.routes    import router as apex_router
 from .message import proto_to_template, templates
 from .message.routes import router as message_router
 from .nodes.routes   import router as nodes_router
 from .tests.routes   import router as tests_router
-
-# Read-only view onto Apex's archive (bind-mounted from services/apex/data/).
-APEX_ARCHIVE_DIR = Path("/app/apex-archive")
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -76,46 +73,7 @@ def health() -> dict:
     return {"ok": True}
 
 
-@app.get("/api/apex/stats")
-def apex_stats() -> dict:
-    """Summary over Apex's currently-rolling SQLite archive.
-
-    Reads the most recent .sqlite file under /app/apex-archive (which is
-    services/apex/data/ on the host). Apex writes WAL, so we open with
-    immutable=0 and a short busy timeout.
-    """
-    if not APEX_ARCHIVE_DIR.exists():
-        return {"available": False, "reason": "archive dir not mounted"}
-    dbs = sorted(APEX_ARCHIVE_DIR.glob("data-*.sqlite"))
-    if not dbs:
-        return {"available": False, "reason": "no archive files yet"}
-    latest = dbs[-1]
-    try:
-        c = sqlite3.connect(f"file:{latest}?mode=ro", uri=True, timeout=2)
-        msg_total      = c.execute("SELECT COUNT(*) FROM Message").fetchone()[0]
-        by_type        = dict(c.execute(
-            "SELECT parsed_type, COUNT(*) FROM Message "
-            "WHERE parsed_type IS NOT NULL "
-            "GROUP BY parsed_type ORDER BY 2 DESC"))
-        latest_ts      = c.execute("SELECT MAX(timestamp_received) FROM Message").fetchone()[0]
-        conn_total     = c.execute("SELECT COUNT(*) FROM Connection").fetchone()[0]
-        conn_open      = c.execute(
-            "SELECT COUNT(*) FROM Connection WHERE disconnect_time IS NULL").fetchone()[0]
-        c.close()
-    except sqlite3.Error as exc:
-        return {"available": False, "reason": f"sqlite: {exc}", "file": latest.name}
-    return {
-        "available": True,
-        "file": latest.name,
-        "all_files": [p.name for p in dbs],
-        "messages_total": msg_total,
-        "messages_by_type": by_type,
-        "latest_received_us": latest_ts,
-        "connections_total": conn_total,
-        "connections_open": conn_open,
-    }
-
-
+app.include_router(apex_router)
 app.include_router(nodes_router)
 app.include_router(message_router)
 app.include_router(tests_router)

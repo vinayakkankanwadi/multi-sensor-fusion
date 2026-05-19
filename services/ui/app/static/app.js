@@ -676,44 +676,125 @@ function expanderFor(node) {
 }
 
 async function renderApexExpansion(_node) {
-  let stats;
-  try {
-    const r = await fetch("/api/apex/stats");
-    if (!r.ok) return `<div class="muted small">stats unavailable: HTTP ${r.status}</div>`;
-    stats = await r.json();
-  } catch (exc) {
-    return `<div class="muted small">stats unavailable: ${exc}</div>`;
-  }
-  if (!stats.available) {
-    return `<div class="muted small">archive not available: ${stats.reason || "?"}</div>`;
-  }
-  const byType = stats.messages_by_type || {};
-  const chips = Object.entries(byType)
-    .map(([k, v]) => `<span class="chip">${k}:${v}</span>`).join(" ");
+  const [state, guiStat, sqlStat] = await Promise.all([
+    fetch("/api/apex/state").then((r) => r.ok ? r.json() : { available: false, reason: `HTTP ${r.status}` }),
+    fetch("/api/apex/gui/status").then((r) => r.ok ? r.json() : { running: false }),
+    fetch("/api/apex/sqlite/status").then((r) => r.ok ? r.json() : { running: false, url: "" }),
+  ]);
+  const stateRow = state.available
+    ? `<span class="dot status-ok"></span> healthy · ${state.connections_open} connections active`
+    : `<span class="dot status-warn"></span> archive unavailable: ${state.reason || "?"}`;
+  const recRow = state.available
+    ? `<code>${state.file}</code> · ${state.messages} msgs · rolls daily`
+    : `<span class="muted">—</span>`;
+  const guiBtn = guiStat.running
+    ? `<button class="apex-btn" data-action="gui-stop">Stop Apex GUI</button>`
+    : `<button class="apex-btn" data-action="gui-start">Open Apex GUI</button>`;
+  const sqlBtn = sqlStat.running
+    ? `<button class="apex-btn" data-action="sqlite-stop">Stop Apex SQLite</button>`
+    : `<button class="apex-btn" data-action="sqlite-start">Open Apex SQLite</button>`;
+  const sqlFrame = sqlStat.running
+    ? `<iframe class="apex-sqlite-frame" src="${sqlStat.url}" title="apex archive (sqlite-web)"></iframe>`
+    : ``;
   return `
-    <div class="kv"><span>archive file</span><code>${stats.file}</code></div>
-    <div class="kv"><span>files on disk</span><span>${(stats.all_files || []).length}</span></div>
-    <div class="kv"><span>messages</span><span>${stats.messages_total}</span></div>
-    <div class="kv"><span>connections</span><span>${stats.connections_open} open / ${stats.connections_total} total</span></div>
-    <div class="kv"><span>by type</span><span class="chips">${chips}</span></div>
+    <div class="kv"><span>status</span><span>${stateRow}</span></div>
+    <div class="kv"><span>recording</span><span>${recRow}</span></div>
+    <div class="apex-actions">${guiBtn}${sqlBtn}</div>
+    ${sqlFrame}
   `;
 }
+
+// Click handlers for action buttons inside an Apex expansion panel. The
+// panel itself re-renders fresh on each toggle, so we delegate on the
+// list container — works for newly-inserted panels too.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".apex-btn");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const panel = btn.closest(".node-row-details");
+  const row   = panel ? panel.previousElementSibling : null;
+  if (!panel || !row) return;
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    if (action === "gui-start")    await fetch("/api/apex/gui/start",    { method: "POST" });
+    if (action === "gui-stop")     await fetch("/api/apex/gui/stop",     { method: "POST" });
+    if (action === "sqlite-start") await fetch("/api/apex/sqlite/start", { method: "POST" });
+    if (action === "sqlite-stop")  await fetch("/api/apex/sqlite/stop",  { method: "POST" });
+  } catch (exc) {
+    btn.textContent = `err: ${exc}`;
+    return;
+  }
+  // Re-render the panel against fresh state.
+  const node = nodeList.find((x) => x.id === row.dataset.id);
+  if (node) panel.innerHTML = await renderApexExpansion(node);
+});
+
+// Per-session memory of which node rows are expanded. Re-applied after
+// every renderNodeList() so polling-driven re-renders don't blow away
+// the operator's open panels (or their iframes).
+const expandedNodeIds = new Set();
 
 async function toggleNodeExpand(row, node) {
   const next = row.nextElementSibling;
   if (next && next.classList.contains("node-row-details")) {
     next.remove();
     row.classList.remove("expanded");
+    expandedNodeIds.delete(node.id);
     return;
   }
   const render = expanderFor(node);
   if (!render) return;
+  expandedNodeIds.add(node.id);
   const panel = document.createElement("div");
   panel.className = "node-row-details";
+  panel.dataset.id = node.id;
   panel.innerHTML = `<div class="muted small">loading…</div>`;
   row.after(panel);
   row.classList.add("expanded");
   panel.innerHTML = await render(node);
+}
+
+// Captured before each renderNodeList() wipe and re-attached after, so
+// poll-driven re-renders don't reload iframes inside expanded panels.
+// Key = node id, value = the live <div.node-row-details> DOM node.
+let _capturedPanels = new Map();
+
+function captureExpandedPanels() {
+  _capturedPanels = new Map();
+  const list = $("#nodes-list");
+  list.querySelectorAll(".node-row-details").forEach((panel) => {
+    if (panel.dataset.id) _capturedPanels.set(panel.dataset.id, panel);
+  });
+}
+
+async function restoreExpandedNodes() {
+  if (expandedNodeIds.size === 0) { _capturedPanels.clear(); return; }
+  const list = $("#nodes-list");
+  for (const id of expandedNodeIds) {
+    const row = list.querySelector(`.node-row[data-id="${id}"]`);
+    const node = nodeList.find((x) => x.id === id);
+    if (!row || !node) { expandedNodeIds.delete(id); continue; }
+    const render = expanderFor(node);
+    if (!render) { expandedNodeIds.delete(id); continue; }
+    row.classList.add("expanded");
+    const captured = _capturedPanels.get(id);
+    if (captured) {
+      // Re-attach the SAME DOM node — iframe inside keeps its document,
+      // no reload, no flicker. Stats stay as they were until the user
+      // clicks something that re-renders explicitly.
+      row.after(captured);
+    } else {
+      // First expand or panel was removed — render fresh.
+      const panel = document.createElement("div");
+      panel.className = "node-row-details";
+      panel.dataset.id = id;
+      panel.innerHTML = `<div class="muted small">loading…</div>`;
+      row.after(panel);
+      panel.innerHTML = await render(node);
+    }
+  }
+  _capturedPanels.clear();
 }
 
 async function loadNodes() {
@@ -752,7 +833,9 @@ async function loadNodes() {
     saveEndpoint();
   }
 
+  captureExpandedPanels();
   renderNodeList();
+  restoreExpandedNodes();
   refreshSendButton();
   applyToggleSeverity(
     "nodes-toggle",

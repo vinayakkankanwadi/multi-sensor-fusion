@@ -667,7 +667,8 @@ function renderServiceList() {
 // node type/name grows drilldown. Each `match` is given the node object;
 // each `render` returns the HTML to inject under the row.
 const NODE_EXPANDERS = [
-  { match: (n) => n.name === "Apex Local", render: renderApexExpansion },
+  { match: (n) => n.name === "Apex Local",  render: renderApexExpansion },
+  { match: (n) => n.name === "BSI Windows", render: renderBSIExpansion  },
 ];
 
 function expanderFor(node) {
@@ -688,46 +689,73 @@ async function renderApexExpansion(_node) {
     ? `<code>${state.file}</code> · ${state.messages} msgs · rolls daily`
     : `<span class="muted">—</span>`;
   const guiBtn = guiStat.running
-    ? `<button class="apex-btn" data-action="gui-stop">Stop Apex GUI</button>`
-    : `<button class="apex-btn" data-action="gui-start">Open Apex GUI</button>`;
+    ? `<button class="node-action-btn" data-action="apex.gui.stop">Stop Apex GUI</button>`
+    : `<button class="node-action-btn" data-action="apex.gui.start">Open Apex GUI</button>`;
   const sqlBtn = sqlStat.running
-    ? `<button class="apex-btn" data-action="sqlite-stop">Stop Apex SQLite</button>`
-    : `<button class="apex-btn" data-action="sqlite-start">Open Apex SQLite</button>`;
+    ? `<button class="node-action-btn" data-action="apex.sqlite.stop">Stop Apex SQLite</button>`
+    : `<button class="node-action-btn" data-action="apex.sqlite.start">Open Apex SQLite</button>`;
   const sqlFrame = sqlStat.running
-    ? `<iframe class="apex-sqlite-frame" src="${sqlStat.url}" title="apex archive (sqlite-web)"></iframe>`
+    ? `<iframe class="node-iframe" src="${sqlStat.url}" title="apex archive (sqlite-web)"></iframe>`
     : ``;
   return `
     <div class="kv"><span>status</span><span>${stateRow}</span></div>
     <div class="kv"><span>recording</span><span>${recRow}</span></div>
-    <div class="apex-actions">${guiBtn}${sqlBtn}</div>
+    <div class="node-actions">${guiBtn}${sqlBtn}</div>
     ${sqlFrame}
   `;
 }
 
-// Click handlers for action buttons inside an Apex expansion panel. The
-// panel itself re-renders fresh on each toggle, so we delegate on the
-// list container — works for newly-inserted panels too.
+async function renderBSIExpansion(_node) {
+  const [state, pgwStat] = await Promise.all([
+    fetch("/api/bsi/state").then((r) => r.ok ? r.json() : { available: false, reason: `HTTP ${r.status}` }),
+    fetch("/api/bsi/pgweb/status").then((r) => r.ok ? r.json() : { running: false, url: "" }),
+  ]);
+  const stateRow = state.available
+    ? `<span class="dot status-ok"></span> reachable · ${state.host}:${state.port}`
+    : `<span class="dot status-warn"></span> unreachable · ${state.reason || "?"}`;
+  const dbRow = state.available
+    ? `<code>${state.database}</code>`
+    : `<span class="muted">—</span>`;
+  const pgBtn = pgwStat.running
+    ? `<button class="node-action-btn" data-action="bsi.pgweb.stop">Stop BSI Postgres</button>`
+    : `<button class="node-action-btn" data-action="bsi.pgweb.start">Open BSI Postgres</button>`;
+  const pgFrame = pgwStat.running
+    ? `<iframe class="node-iframe" src="${pgwStat.url}" title="bsi postgres (pgweb)"></iframe>`
+    : ``;
+  return `
+    <div class="kv"><span>status</span><span>${stateRow}</span></div>
+    <div class="kv"><span>database</span><span>${dbRow}</span></div>
+    <div class="node-actions">${pgBtn}</div>
+    ${pgFrame}
+  `;
+}
+
+// Click handlers for any action button inside a node expansion panel.
+// Action data-attribute is "<service>.<resource>.<verb>" — translated
+// straight into a POST to /api/<service>/<resource>/<verb>. New
+// expanders only need to use the same button class and naming.
 document.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".apex-btn");
+  const btn = e.target.closest(".node-action-btn");
   if (!btn) return;
   const action = btn.dataset.action;
   const panel = btn.closest(".node-row-details");
   const row   = panel ? panel.previousElementSibling : null;
-  if (!panel || !row) return;
+  if (!panel || !row || !action) return;
+  const path = "/api/" + action.replaceAll(".", "/");
   btn.disabled = true;
   btn.textContent = "…";
   try {
-    if (action === "gui-start")    await fetch("/api/apex/gui/start",    { method: "POST" });
-    if (action === "gui-stop")     await fetch("/api/apex/gui/stop",     { method: "POST" });
-    if (action === "sqlite-start") await fetch("/api/apex/sqlite/start", { method: "POST" });
-    if (action === "sqlite-stop")  await fetch("/api/apex/sqlite/stop",  { method: "POST" });
+    await fetch(path, { method: "POST" });
   } catch (exc) {
     btn.textContent = `err: ${exc}`;
     return;
   }
-  // Re-render the panel against fresh state.
+  // Re-render the panel against fresh state, picking the right renderer
+  // for whichever node this button belongs to (Apex / BSI / future).
   const node = nodeList.find((x) => x.id === row.dataset.id);
-  if (node) panel.innerHTML = await renderApexExpansion(node);
+  if (!node) return;
+  const render = expanderFor(node);
+  if (render) panel.innerHTML = await render(node);
 });
 
 // Per-session memory of which node rows are expanded. Re-applied after
@@ -755,47 +783,9 @@ async function toggleNodeExpand(row, node) {
   panel.innerHTML = await render(node);
 }
 
-// Captured before each renderNodeList() wipe and re-attached after, so
-// poll-driven re-renders don't reload iframes inside expanded panels.
-// Key = node id, value = the live <div.node-row-details> DOM node.
-let _capturedPanels = new Map();
-
-function captureExpandedPanels() {
-  _capturedPanels = new Map();
-  const list = $("#nodes-list");
-  list.querySelectorAll(".node-row-details").forEach((panel) => {
-    if (panel.dataset.id) _capturedPanels.set(panel.dataset.id, panel);
-  });
-}
-
-async function restoreExpandedNodes() {
-  if (expandedNodeIds.size === 0) { _capturedPanels.clear(); return; }
-  const list = $("#nodes-list");
-  for (const id of expandedNodeIds) {
-    const row = list.querySelector(`.node-row[data-id="${id}"]`);
-    const node = nodeList.find((x) => x.id === id);
-    if (!row || !node) { expandedNodeIds.delete(id); continue; }
-    const render = expanderFor(node);
-    if (!render) { expandedNodeIds.delete(id); continue; }
-    row.classList.add("expanded");
-    const captured = _capturedPanels.get(id);
-    if (captured) {
-      // Re-attach the SAME DOM node — iframe inside keeps its document,
-      // no reload, no flicker. Stats stay as they were until the user
-      // clicks something that re-renders explicitly.
-      row.after(captured);
-    } else {
-      // First expand or panel was removed — render fresh.
-      const panel = document.createElement("div");
-      panel.className = "node-row-details";
-      panel.dataset.id = id;
-      panel.innerHTML = `<div class="muted small">loading…</div>`;
-      row.after(panel);
-      panel.innerHTML = await render(node);
-    }
-  }
-  _capturedPanels.clear();
-}
+// (No capture-and-restore dance needed any more: renderNodeList() does
+// in-place row updates without removing .node-row-details panels from
+// the DOM, so iframes inside survive polls untouched.)
 
 async function loadNodes() {
   // Unified drawer: every non-service entry. We rely on the nodes
@@ -833,9 +823,8 @@ async function loadNodes() {
     saveEndpoint();
   }
 
-  captureExpandedPanels();
   renderNodeList();
-  restoreExpandedNodes();
+  _wireNodeListDelegation();
   refreshSendButton();
   applyToggleSeverity(
     "nodes-toggle",
@@ -888,102 +877,133 @@ function _middlewareTooltip(n) {
   return `${n.name}\n${n.host}:${n.port} (${n.kind || "—"})\nrtt ${rtt}${err}`;
 }
 
+// Rebuild only the row's contents (innerHTML + className + title), never
+// the row element itself. That way the .node-row-details panel sitting
+// after the row stays attached to the document — iframes inside survive
+// polls without reloading.
+function _populateNodeRow(row, n) {
+  const sev = n.severity || "unknown";
+  const isSelectable = n.type === "middleware";
+  const isSelected = isSelectable && n.id === selectedTargetId;
+
+  row.className = "node-row " + n.type + (isSelected ? " active" : "");
+  // Preserve .expanded if currently set (panel below stays mounted too).
+  if (expandedNodeIds.has(n.id)) row.classList.add("expanded");
+  row.dataset.id = n.id;
+  row.dataset.type = n.type;
+
+  let secondaryHtml = "";
+  let titleStr = "";
+  if (n.type === "platform-node") {
+    const chips = Object.entries(n.services || {}).map(([kind, svc]) => {
+      const sub = (svc && svc.severity) || "unknown";
+      return `<span class="svc"><span class="dot status-${sub}"></span>${kind}</span>`;
+    }).join("");
+    secondaryHtml = `<span class="svcs">${chips}</span>`;
+    titleStr = _platformNodeServicesTooltip(n);
+  } else if (n.type === "middleware") {
+    secondaryHtml = `<span class="kind muted small">${n.kind || "—"}</span>`;
+    titleStr = _middlewareTooltip(n);
+  } else if (n.type === "tak-server") {
+    const proto = (n.protocol || "udp").toUpperCase();
+    const s = n.status || {};
+    secondaryHtml = `<span class="kind muted small">${proto}</span>`;
+    titleStr = `${n.name}\n${n.host}:${n.port} (${proto})` +
+               (s.error ? `\n${s.error}` : "");
+  } else {
+    secondaryHtml = `<span class="muted small">${n.type}</span>`;
+    titleStr = `${n.name} · ${n.host}${n.port ? `:${n.port}` : ""}`;
+  }
+  row.title = titleStr;
+
+  const radioCell = isSelectable
+    ? `<input type="radio" name="target" value="${n.id}"${isSelected ? " checked" : ""}>`
+    : `<span class="radio-placeholder" aria-hidden="true"></span>`;
+  const chev = expanderFor(n) ? `<span class="chev" aria-hidden="true">▸</span>` : "";
+
+  row.innerHTML = `
+    <span class="dot status-${sev}" aria-label="overall: ${sev}"></span>
+    ${radioCell}
+    <span class="name">${chev}${n.name}</span>
+    <code class="host">${n.host}${n.port ? ":" + n.port : ""}</code>
+    <span class="type-badge type-${n.type}">${n.type}</span>
+    ${secondaryHtml}
+    <span class="row-actions">
+      <button class="ghost row-edit"   data-id="${n.id}" title="Edit node">edit</button>
+      <button class="ghost row-delete" data-id="${n.id}" title="Delete node">×</button>
+    </span>
+  `;
+}
+
 function renderNodeList() {
   const list = $("#nodes-list");
-  list.innerHTML = "";
+  const currentIds = new Set(nodeList.map((n) => n.id));
 
-  for (const n of nodeList) {
-    const sev = n.severity || "unknown";
-    const isSelectable = n.type === "middleware";
-    const isSelected = isSelectable && n.id === selectedTargetId;
-
-    const row = document.createElement("div");
-    row.className = "node-row " + n.type + (isSelected ? " active" : "");
-    row.dataset.id = n.id;
-    row.dataset.type = n.type;
-
-    let secondaryHtml = "";
-    let titleStr = "";
-    if (n.type === "platform-node") {
-      const chips = Object.entries(n.services || {}).map(([kind, svc]) => {
-        const sub = (svc && svc.severity) || "unknown";
-        return `<span class="svc"><span class="dot status-${sub}"></span>${kind}</span>`;
-      }).join("");
-      secondaryHtml = `<span class="svcs">${chips}</span>`;
-      titleStr = _platformNodeServicesTooltip(n);
-    } else if (n.type === "middleware") {
-      // The `probe` flag is still editable in the modal, but we don't
-      // surface it in the row — it's noise for the common case (probe
-      // on), and the dot already reflects status correctly.
-      secondaryHtml = `<span class="kind muted small">${n.kind || "—"}</span>`;
-      titleStr = _middlewareTooltip(n);
-    } else if (n.type === "tak-server") {
-      const proto = (n.protocol || "udp").toUpperCase();
-      const s = n.status || {};
-      secondaryHtml = `<span class="kind muted small">${proto}</span>`;
-      titleStr = `${n.name}\n${n.host}:${n.port} (${proto})` +
-                 (s.error ? `\n${s.error}` : "");
-    } else {
-      secondaryHtml = `<span class="muted small">${n.type}</span>`;
-      titleStr = `${n.name} · ${n.host}${n.port ? `:${n.port}` : ""}`;
-    }
-    row.title = titleStr;
-
-    const radioCell = isSelectable
-      ? `<input type="radio" name="target" value="${n.id}"${isSelected ? " checked" : ""}>`
-      : `<span class="radio-placeholder" aria-hidden="true"></span>`;
-
-    const chev = expanderFor(n) ? `<span class="chev" aria-hidden="true">▸</span>` : "";
-
-    row.innerHTML = `
-      <span class="dot status-${sev}" aria-label="overall: ${sev}"></span>
-      ${radioCell}
-      <span class="name">${chev}${n.name}</span>
-      <code class="host">${n.host}${n.port ? ":" + n.port : ""}</code>
-      <span class="type-badge type-${n.type}">${n.type}</span>
-      ${secondaryHtml}
-      <span class="row-actions">
-        <button class="ghost row-edit"   data-id="${n.id}" title="Edit node">edit</button>
-        <button class="ghost row-delete" data-id="${n.id}" title="Delete node">×</button>
-      </span>
-    `;
-    list.appendChild(row);
-  }
-
-  // Row-level click → select (middleware) AND toggle expand (any node
-  // with a registered expander). Inputs and action buttons handle their
-  // own clicks; don't double-fire.
+  // Remove rows (and any adjacent details panel) for nodes that no
+  // longer exist in the registry.
   list.querySelectorAll(".node-row").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      if (e.target.matches("input, button")) return;
-      const n = nodeList.find((x) => x.id === row.dataset.id);
-      if (!n) return;
-      if (row.classList.contains("middleware")) {
-        selectedTargetId = row.dataset.id;
-        saveEndpoint();
-        list.querySelectorAll(".node-row.middleware").forEach((r) => {
-          r.classList.toggle("active", r.dataset.id === selectedTargetId);
-          const rb = r.querySelector('input[type="radio"]');
-          if (rb) rb.checked = (r.dataset.id === selectedTargetId);
-        });
-        refreshSendButton();
-      }
-      if (expanderFor(n)) toggleNodeExpand(row, n);
-    });
+    if (!currentIds.has(row.dataset.id)) {
+      const panel = row.nextElementSibling;
+      if (panel && panel.classList.contains("node-row-details")) panel.remove();
+      row.remove();
+      expandedNodeIds.delete(row.dataset.id);
+    }
   });
 
-  list.querySelectorAll(".row-edit").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
+  // For each node: update existing row in place, or insert a new one.
+  // New rows go AT THE END so we don't disturb existing panels. (Order
+  // matches the API response on initial load; subsequent additions just
+  // append — acceptable.)
+  for (const n of nodeList) {
+    let row = list.querySelector(`.node-row[data-id="${n.id}"]`);
+    if (row) {
+      _populateNodeRow(row, n);
+    } else {
+      row = document.createElement("div");
+      _populateNodeRow(row, n);
+      list.appendChild(row);
+    }
+  }
+}
+
+// Wire row click handlers once at startup, using event delegation on
+// #nodes-list. Survives in-place row updates since we never replace the
+// list element or its children's containers.
+function _wireNodeListDelegation() {
+  const list = $("#nodes-list");
+  if (list.dataset.wired === "1") return;
+  list.dataset.wired = "1";
+
+  list.addEventListener("click", (e) => {
+    const editBtn   = e.target.closest(".row-edit");
+    const deleteBtn = e.target.closest(".row-delete");
+    if (editBtn) {
       e.stopPropagation();
-      const n = nodeList.find((x) => x.id === btn.dataset.id);
+      const n = nodeList.find((x) => x.id === editBtn.dataset.id);
       if (n) openNodeForm(n);
-    });
-  });
-  list.querySelectorAll(".row-delete").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
+      return;
+    }
+    if (deleteBtn) {
       e.stopPropagation();
-      deleteNode(btn.dataset.id);
-    });
+      deleteNode(deleteBtn.dataset.id);
+      return;
+    }
+    const row = e.target.closest(".node-row");
+    if (!row) return;
+    if (e.target.matches("input")) return;   // radio toggles itself
+    const n = nodeList.find((x) => x.id === row.dataset.id);
+    if (!n) return;
+    if (row.classList.contains("middleware")) {
+      selectedTargetId = row.dataset.id;
+      saveEndpoint();
+      list.querySelectorAll(".node-row.middleware").forEach((r) => {
+        r.classList.toggle("active", r.dataset.id === selectedTargetId);
+        const rb = r.querySelector('input[type="radio"]');
+        if (rb) rb.checked = (r.dataset.id === selectedTargetId);
+      });
+      refreshSendButton();
+    }
+    if (expanderFor(n)) toggleNodeExpand(row, n);
   });
 }
 
@@ -1013,6 +1033,11 @@ function openNodeForm(existing) {
       form.elements.kind.value = existing.kind || "";
       form.elements.probe.checked = existing.probe !== false;
     }
+    // DB credentials (any type) — populate if present
+    form.elements.db_kind.value     = existing.db_kind || "";
+    form.elements.db_user.value     = existing.db_user || "";
+    form.elements.db_database.value = existing.db_database || "";
+    form.elements.db_password.value = existing.db_password || "";
     form.dataset.mode = "edit";
     form.dataset.editId = existing.id;
   } else {
@@ -1023,6 +1048,7 @@ function openNodeForm(existing) {
     delete form.dataset.editId;
   }
   _updateFormTypeVisibility(form.elements.type.value);
+  _updateFormDbVisibility(form.elements.db_kind.value);
   modal.hidden = false;
 }
 
@@ -1036,6 +1062,12 @@ function _updateFormTypeVisibility(type) {
   });
   $("#node-form").querySelectorAll(".middleware-only").forEach((el) => {
     el.style.display = (type === "middleware") ? "" : "none";
+  });
+}
+
+function _updateFormDbVisibility(dbKind) {
+  $("#node-form").querySelectorAll(".db-only").forEach((el) => {
+    el.style.display = dbKind ? "" : "none";
   });
 }
 
@@ -1066,6 +1098,18 @@ async function submitNodeForm(e) {
     const kind = form.elements.kind.value.trim();
     if (kind) body.kind = kind;
     body.probe = !!form.elements.probe.checked;
+  }
+  // DB credentials — submit only when the user picked a db_kind. The
+  // PATCH endpoint accepts these as optional for any node type.
+  const dbKind = form.elements.db_kind.value;
+  if (dbKind) {
+    body.db_kind     = dbKind;
+    const u = form.elements.db_user.value.trim();
+    const d = form.elements.db_database.value.trim();
+    const p = form.elements.db_password.value;
+    if (u) body.db_user     = u;
+    if (d) body.db_database = d;
+    if (p) body.db_password = p;
   }
 
   const submit = $("#node-form-submit");
@@ -1272,6 +1316,9 @@ function init() {
   });
   $("#node-form").elements.type.addEventListener("change", (e) => {
     _updateFormTypeVisibility(e.target.value);
+  });
+  $("#node-form").elements.db_kind.addEventListener("change", (e) => {
+    _updateFormDbVisibility(e.target.value);
   });
 
   $("#mode-single").addEventListener("click", () => setMode("single"));

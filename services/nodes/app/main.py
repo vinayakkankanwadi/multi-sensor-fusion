@@ -315,6 +315,14 @@ class NodeCreate(BaseModel):
     admin_port: int | None = Field(None, ge=1, le=65535)
     protocol: str | None = Field(None, max_length=16)
     description: str | None = Field(None, max_length=4096)
+    # Optional DB credentials — surfaced in the UI's edit form when set.
+    # Stored in plaintext in nodes.json (same trust level as apex_config.json
+    # and the rest of the local LAN config). Used by feature controllers
+    # (e.g. ApexController, BSIController) to wire up DB browsers.
+    db_kind: str | None = Field(None, max_length=32)
+    db_user: str | None = Field(None, max_length=128)
+    db_password: str | None = Field(None, max_length=256)
+    db_database: str | None = Field(None, max_length=128)
 
 
 @app.post("/nodes", status_code=201)
@@ -389,6 +397,10 @@ class NodePatch(BaseModel):
     admin_port: int | None = Field(None, ge=1, le=65535)
     protocol: str | None = Field(None, max_length=16)
     description: str | None = Field(None, max_length=4096)
+    db_kind: str | None = Field(None, max_length=32)
+    db_user: str | None = Field(None, max_length=128)
+    db_password: str | None = Field(None, max_length=256)
+    db_database: str | None = Field(None, max_length=128)
 
 
 @app.patch("/nodes/{node_id}")

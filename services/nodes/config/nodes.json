@@ -26,9 +26,13 @@
     "kind": "windows-bsi-harness",
     "name": "BSI Windows",
     "host": "192.168.201.152",
-    "port": 14000,
-    "probe": false,
-    "description": "Windows BSI Flex 335 v2 reference harness. Probing disabled because the harness logs each bare-TCP probe as a receiver error \u2014 selecting and sending is still fully functional."
+    "port": 5432,
+    "probe": true,
+    "db_kind": "postgres",
+    "db_user": "postgres",
+    "db_password": "password",
+    "db_database": "sapientBSIFlex335v2",
+    "description": "Windows BSI Flex 335 v2 reference harness. Reachability probe targets Postgres (:5432) rather than the SAPIENT DataAgent receiver \u2014 the harness logs each bare-TCP probe to its receiver ports as an error."
   },
   {
     "id": "ui",

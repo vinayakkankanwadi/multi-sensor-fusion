@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=24">
+<link rel="stylesheet" href="/static/style.css?v=27">
 </head>
 <body>
 <header>
@@ -241,6 +241,33 @@
       </label>
       <label class="checkbox"><input type="checkbox" name="probe"> Probe this middleware (TCP-connect)</label>
     </div>
+    <!-- DB credentials (any node that has a DB the UI knows how to browse).
+         Stored in nodes.json plaintext — same trust level as the rest of the
+         local LAN config. -->
+    <fieldset class="form-row db-section">
+      <legend>Database (optional)</legend>
+      <div class="form-row">
+        <label>Kind
+          <select name="db_kind">
+            <option value="">— none —</option>
+            <option value="postgres">postgres</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row db-only">
+        <label>User
+          <input name="db_user" placeholder="postgres">
+        </label>
+        <label>Database
+          <input name="db_database" placeholder="sapientBSIFlex335v2">
+        </label>
+      </div>
+      <div class="form-row db-only">
+        <label>Password
+          <input name="db_password" type="password" autocomplete="off" placeholder="•••••••">
+        </label>
+      </div>
+    </fieldset>
     <div class="form-row">
       <label>Description
         <textarea name="description" rows="2" placeholder="optional"></textarea>
@@ -254,6 +281,6 @@
   </form>
 </div>
 
-<script src="/static/app.js?v=26"></script>
+<script src="/static/app.js?v=30"></script>
 </body>
 </html>

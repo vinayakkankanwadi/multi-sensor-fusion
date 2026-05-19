@@ -203,6 +203,28 @@ services:
   # Also runnable from the CLI:
   #     docker compose --profile sqlite-ui up -d apex-sqlite-web
   # then http://localhost:8095
+  # Opt-in: web-based Postgres browser over BSI's sapientBSIFlex335v2.
+  # Triggered by "Open BSI Postgres" in the Nodes drawer's BSI panel
+  # (POST /api/bsi/pgweb/start). Read-only flag refuses non-SELECT
+  # statements client-side; the underlying postgres user still has full
+  # privileges, so the real security boundary is the password + the LAN.
+  bsi-pgweb:
+    profiles: ["bsi-db"]
+    image: sosedoff/pgweb:latest
+    container_name: bsi-pgweb
+    network_mode: host
+    # Credentials come from the bsi-windows node entry in nodes.json,
+    # passed in by the UI backend (services/ui/app/bsi/routes.py) when
+    # the operator clicks "Open BSI Postgres". Edit the creds via the
+    # node edit form; the next click picks them up.
+    command:
+      - "--bind=0.0.0.0"
+      - "--listen=8096"
+      - "--readonly"
+      - "--url"
+      - "postgres://${BSI_PG_USER:-postgres}:${BSI_PG_PASS:-password}@${BSI_HOST:-192.168.201.152}:${BSI_PG_PORT:-5432}/${BSI_PG_DB:-sapientBSIFlex335v2}?sslmode=disable"
+    restart: unless-stopped
+
   apex-sqlite-web:
     profiles: ["sqlite-ui"]
     image: coleifer/sqlite-web:latest

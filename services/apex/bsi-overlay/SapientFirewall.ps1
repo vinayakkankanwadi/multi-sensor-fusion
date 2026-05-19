@@ -13,7 +13,8 @@
          - "Allow ICMPv4-In (Echo Request)"   (so ping works)
          - "SAPIENT DA Inbound" on TCP
               14000 (DMM_DA), 14005-14007 (ASM_DA 1/2/3),
-              12002 (HDA tasking), 12003 (GUI), 14001 (SDA client)
+              12002 (HDA tasking), 12003 (GUI), 14001 (SDA client),
+              5432 (PostgreSQL)
     3. Verifies the rules exist and are enabled.
 
   Does NOT disable the firewall — only adds explicit Allow rules.
@@ -42,7 +43,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltinRole]::Administra
 
 $IcmpRuleName = "Allow ICMPv4-In (Echo Request)"
 $TcpRuleName  = "SAPIENT DA Inbound"
-$Ports        = 14000, 14005, 14006, 14007, 12002, 12003, 14001
+$Ports        = 14000, 14005, 14006, 14007, 12002, 12003, 14001, 5432
 $Profiles     = "Domain","Private","Public"
 
 # ---- 1. Diagnose ---------------------------------------------------------

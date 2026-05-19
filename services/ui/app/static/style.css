@@ -233,6 +233,37 @@ button.ghost.small.status-fail::before { background: #f85149; }
   background: #1f2937;
 }
 .node-row.platform-node { cursor: default; }
+.node-row .chev {
+  display: inline-block;
+  width: 12px; color: #8b949e;
+  transition: transform 0.15s ease;
+}
+.node-row.expanded .chev { transform: rotate(90deg); }
+.node-row-details {
+  margin: -4px 0 4px 24px;
+  padding: 8px 12px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  font-size: 12px;
+  color: #c9d1d9;
+}
+.node-row-details .kv {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  padding: 2px 0;
+}
+.node-row-details .kv > span:first-child { color: #8b949e; }
+.node-row-details .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.node-row-details .chip {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #21262d;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+}
 .node-row input[type="radio"] { margin: 0; cursor: pointer; }
 .node-row .radio-placeholder {
   display: inline-block;

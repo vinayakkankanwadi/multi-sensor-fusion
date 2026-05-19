@@ -17,10 +17,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# ui runtime data — bind-mounted, never tracked. Templates are
-# auto-seeded on first startup from the SAPIENT .proto schema; runs
-# are produced per flow execution.
+# Runtime data dirs — bind-mounted, never tracked.
+# ui/data: templates (auto-seeded from .proto on startup) + run records
+# apex/data: rolling SQLite archive of every routed SAPIENT message
 services/ui/data/
+services/apex/data/
 
 # generated SAPIENT proto bindings — regenerate via
 # `python libs/sapient-proto-to-msg/sapient_proto_to_msg.py`

@@ -663,6 +663,59 @@ function renderServiceList() {
   }
 }
 
+// Per-node expandable details panels. Add a new entry here when another
+// node type/name grows drilldown. Each `match` is given the node object;
+// each `render` returns the HTML to inject under the row.
+const NODE_EXPANDERS = [
+  { match: (n) => n.name === "Apex Local", render: renderApexExpansion },
+];
+
+function expanderFor(node) {
+  for (const e of NODE_EXPANDERS) if (e.match(node)) return e.render;
+  return null;
+}
+
+async function renderApexExpansion(_node) {
+  let stats;
+  try {
+    const r = await fetch("/api/apex/stats");
+    if (!r.ok) return `<div class="muted small">stats unavailable: HTTP ${r.status}</div>`;
+    stats = await r.json();
+  } catch (exc) {
+    return `<div class="muted small">stats unavailable: ${exc}</div>`;
+  }
+  if (!stats.available) {
+    return `<div class="muted small">archive not available: ${stats.reason || "?"}</div>`;
+  }
+  const byType = stats.messages_by_type || {};
+  const chips = Object.entries(byType)
+    .map(([k, v]) => `<span class="chip">${k}:${v}</span>`).join(" ");
+  return `
+    <div class="kv"><span>archive file</span><code>${stats.file}</code></div>
+    <div class="kv"><span>files on disk</span><span>${(stats.all_files || []).length}</span></div>
+    <div class="kv"><span>messages</span><span>${stats.messages_total}</span></div>
+    <div class="kv"><span>connections</span><span>${stats.connections_open} open / ${stats.connections_total} total</span></div>
+    <div class="kv"><span>by type</span><span class="chips">${chips}</span></div>
+  `;
+}
+
+async function toggleNodeExpand(row, node) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains("node-row-details")) {
+    next.remove();
+    row.classList.remove("expanded");
+    return;
+  }
+  const render = expanderFor(node);
+  if (!render) return;
+  const panel = document.createElement("div");
+  panel.className = "node-row-details";
+  panel.innerHTML = `<div class="muted small">loading…</div>`;
+  row.after(panel);
+  row.classList.add("expanded");
+  panel.innerHTML = await render(node);
+}
+
 async function loadNodes() {
   // Unified drawer: every non-service entry. We rely on the nodes
   // service's /api/nodes?type=… filter; doing two filtered fetches keeps
@@ -797,10 +850,12 @@ function renderNodeList() {
       ? `<input type="radio" name="target" value="${n.id}"${isSelected ? " checked" : ""}>`
       : `<span class="radio-placeholder" aria-hidden="true"></span>`;
 
+    const chev = expanderFor(n) ? `<span class="chev" aria-hidden="true">▸</span>` : "";
+
     row.innerHTML = `
       <span class="dot status-${sev}" aria-label="overall: ${sev}"></span>
       ${radioCell}
-      <span class="name">${n.name}</span>
+      <span class="name">${chev}${n.name}</span>
       <code class="host">${n.host}${n.port ? ":" + n.port : ""}</code>
       <span class="type-badge type-${n.type}">${n.type}</span>
       ${secondaryHtml}
@@ -812,19 +867,25 @@ function renderNodeList() {
     list.appendChild(row);
   }
 
-  // Row-level click → select (only for middleware-type rows). Inputs and
-  // action buttons handle their own clicks; don't double-fire.
-  list.querySelectorAll(".node-row.middleware").forEach((row) => {
+  // Row-level click → select (middleware) AND toggle expand (any node
+  // with a registered expander). Inputs and action buttons handle their
+  // own clicks; don't double-fire.
+  list.querySelectorAll(".node-row").forEach((row) => {
     row.addEventListener("click", (e) => {
       if (e.target.matches("input, button")) return;
-      selectedTargetId = row.dataset.id;
-      saveEndpoint();
-      list.querySelectorAll(".node-row.middleware").forEach((r) => {
-        r.classList.toggle("active", r.dataset.id === selectedTargetId);
-        const rb = r.querySelector('input[type="radio"]');
-        if (rb) rb.checked = (r.dataset.id === selectedTargetId);
-      });
-      refreshSendButton();
+      const n = nodeList.find((x) => x.id === row.dataset.id);
+      if (!n) return;
+      if (row.classList.contains("middleware")) {
+        selectedTargetId = row.dataset.id;
+        saveEndpoint();
+        list.querySelectorAll(".node-row.middleware").forEach((r) => {
+          r.classList.toggle("active", r.dataset.id === selectedTargetId);
+          const rb = r.querySelector('input[type="radio"]');
+          if (rb) rb.checked = (r.dataset.id === selectedTargetId);
+        });
+        refreshSendButton();
+      }
+      if (expanderFor(n)) toggleNodeExpand(row, n);
     });
   });
 

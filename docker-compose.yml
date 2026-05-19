@@ -60,6 +60,10 @@ services:
       REGRESSION_URL: "http://127.0.0.1:8094"
     volumes:
       - ./services/ui/data:/app/data
+      # Read-only-ish view onto Apex's archive — used by /api/apex/stats.
+      # Same dir Apex writes to; UI never writes, but SQLite WAL mode
+      # touches lock files so this can't be :ro.
+      - ./services/apex/data:/app/apex-archive
     restart: unless-stopped
 
   gps:
@@ -135,7 +139,58 @@ services:
     volumes:
       # Live-edit the LAN config without rebuilding the image.
       - ./services/apex/apex_config.json:/app/apex_config.json:ro
+      # Persist Apex's SQLite archive (every routed message + connection
+      # log) on the host so it survives container rebuilds and can be
+      # opened with sqlite3 / DB Browser or replayed via apex-replay.
+      - ./services/apex/data:/app/data
     restart: unless-stopped
+
+  # Opt-in: replays a stored SAPIENT .sqlite archive over TCP into Apex's
+  # Child port (:5020). Not started by default. Run with:
+  #     docker compose --profile replay run --rm apex-replay
+  # Replay config lives in services/apex/data/replay_config.json (the
+  # bind-mounted data dir). Apex ships an example replay_config.json
+  # baked into the image at /app/replay_config.json — drop a copy into
+  # services/apex/data/ and edit it for your DB file / time window /
+  # speed multiplier.
+  apex-replay:
+    profiles: ["replay"]
+    image: apex:latest
+    container_name: apex-replay
+    network_mode: host
+    command: ["python", "-m", "sapient_apex_replay.replay",
+              "/app/data/replay_config.json"]
+    volumes:
+      # RW mount required: SQLite WAL mode needs to touch -shm/-wal lock
+      # files even when only reading. Replay performs no INSERTs.
+      - ./services/apex/data:/app/data
+    depends_on:
+      - apex
+
+  # Opt-in: Apex's Qt6 desktop GUI (database/connection/message viewer).
+  # Same image as the middleware, different entry point. Forwards the
+  # host's X11 socket so the window opens on your desktop. Run with:
+  #     docker compose --profile gui up apex-gui
+  # On Wayland sessions, set QT_QPA_PLATFORM=wayland in env first.
+  apex-gui:
+    profiles: ["gui"]
+    image: apex:latest
+    container_name: apex-gui
+    network_mode: host
+    command: ["python", "-m", "sapient_apex_gui.apex_gui"]
+    environment:
+      DISPLAY:         "${DISPLAY}"
+      WAYLAND_DISPLAY: "${WAYLAND_DISPLAY:-}"
+      QT_QPA_PLATFORM: "${QT_QPA_PLATFORM:-xcb}"
+      XAUTHORITY:      "/root/.Xauthority"
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - ${XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
+      # Bind apex archive read-write (SQLite WAL needs lock files even
+      # for read-only opens). GUI does SELECTs only.
+      - ./services/apex/data:/app/data
+    depends_on:
+      - apex
 
   cot-bridge:
     # SAPIENT → CoT → TAK fan-out. Accepts SAPIENT TCP on :5005 (same wire

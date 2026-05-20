@@ -32,27 +32,38 @@ def _ntp_status_for_host(host: str, ntp_sources: dict) -> dict:
     }
 
 
+# Router pushes NMEA at ~1 Hz. If the latest sentence is older than
+# this, treat the link as down (red dot) — matches the panel's view.
+GPS_FRESH_S = 8.0
+
+
 def _gps_status_for_host(host: str, gps_fix: dict) -> dict:
     if not gps_fix:
-        return {"ok": False, "severity": "unknown", "error": "gps unreachable"}
+        return {"ok": False, "severity": "fail", "error": "gps unreachable"}
     source = (gps_fix.get("source") or "")
     seen_from = None
     if "from " in source:
         seen_from = source.split("from ", 1)[1].rstrip(") ")
     if seen_from is None:
-        return {"ok": False, "severity": "unknown", "error": "no NMEA received yet"}
+        return {"ok": False, "severity": "fail", "error": "no NMEA received yet"}
     if seen_from != host:
-        return {"ok": False, "severity": "unknown",
+        return {"ok": False, "severity": "fail",
                 "error": f"latest NMEA is from {seen_from}, not {host}"}
+    age = gps_fix.get("age_s")
+    if not isinstance(age, (int, float)) or age > GPS_FRESH_S:
+        return {"ok": False, "severity": "fail",
+                "error": f"NMEA stale ({age}s ago, threshold {GPS_FRESH_S}s)",
+                "age_s": age}
     if not gps_fix.get("ok"):
         return {"ok": False, "severity": "fail",
-                "error": gps_fix.get("error") or "fix invalid"}
+                "error": gps_fix.get("error") or "fix invalid",
+                "age_s": age}
     return {
         "ok": True,
         "severity": "ok",
         "fix_status": gps_fix.get("fix_status"),
         "satellites": gps_fix.get("satellites"),
-        "age_s": gps_fix.get("age_s"),
+        "age_s": age,
     }
 
 

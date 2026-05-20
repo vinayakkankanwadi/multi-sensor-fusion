@@ -734,39 +734,143 @@ async function renderTAKExpansion(_node) {
 async function renderEdgeExpansion(_node) {
   const state = await fetch("/api/edge/state").then((r) => r.ok ? r.json() : { available: false, reason: `HTTP ${r.status}` });
   if (!state.available) {
-    return `
-      <div class="kv"><span>status</span><span><span class="dot status-warn"></span> router unreachable: ${state.reason || "?"}</span></div>
-    `;
+    return `<div class="kv"><span>router</span><span><span class="dot status-warn"></span> unreachable: ${state.reason || "?"}</span></div>`;
   }
-  const dev = state.device || {};
-  const gps = state.gps || {};
   const ntp = state.ntp || {};
-  const reachRow = `<span class="dot status-ok"></span> reachable · ${state.host}`;
-  const devRow = `${dev.model || "?"} · <code>${dev.hostname || "?"}</code> · fw ${dev.fw_version || "?"}`;
-  const fix = (gps.fix_status || "").toLowerCase();
-  const gpsDot = fix === "fix" || fix === "3d" || fix === "2d" ? "status-ok" : "status-warn";
-  const gpsRow = (gps.latitude != null && gps.longitude != null)
-    ? `<span class="dot ${gpsDot}"></span> ${gps.fix_status || "?"} · ${gps.satellites || 0} sats · ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`
-    : `<span class="dot ${gpsDot}"></span> ${gps.fix_status || "no fix"} · ${gps.satellites || 0} sats`;
-  const ntpDot = ntp.server_enabled ? "status-ok" : "status-warn";
-  const ntpStateText = ntp.server_enabled
-    ? `enabled · ${ntp.router_time_iso || "?"}` +
-      (ntp.offset_s != null ? ` · offset ${(ntp.offset_s * 1000).toFixed(0)} ms` : ``)
-    : `disabled · ${ntp.error || "no reply"}`;
-  const ntpBtn = ntp.server_enabled
-    ? ``
-    : `<button class="node-action-btn" data-action="edge.ntp.enable">Enable NTP Server</button>`;
+  const gps = state.gps || {};
+
+  // NTP — just the two toggle buttons. Labels flip Enable ↔ Disable
+  // based on current config flags so a click is always a meaningful
+  // change.
+  const cliEn = !!ntp.client_enabled;
+  const srvEn = !!ntp.server_enabled;
+  const cliBtn = cliEn
+    ? `<button class="node-action-btn" data-action="edge.ntp.client.disable">Disable NTP Client</button>`
+    : `<button class="node-action-btn" data-action="edge.ntp.client.enable">Enable NTP Client</button>`;
+  const srvBtn = srvEn
+    ? `<button class="node-action-btn" data-action="edge.ntp.server.disable">Disable NTP Server</button>`
+    : `<button class="node-action-btn" data-action="edge.ntp.server.enable">Enable NTP Server</button>`;
+
+  // GPS forwarding targets list. Dot is green only for the row whose
+  // host matches one of our local interface IPs AND services/gps is
+  // currently receiving NMEA from the router; that's the only row we
+  // can confirm reception for from this box.
+  const localIps = new Set(gps.local_ips || []);
+  const recv     = gps.local_reception || { receiving: false };
+  const rows = (gps.targets || []).map((t) => {
+    const isSelf = localIps.has(t.host);
+    const live   = isSelf && recv.receiving;
+    const dot    = live ? "status-ok"
+                 : (isSelf ? "status-fail" : "status-warn");
+    const note   = live ? `receiving · ${recv.age_s != null ? recv.age_s.toFixed(1) + "s" : "?"} ago`
+                 : (isSelf ? `no data on this box` : `not verified from here`);
+    return `
+      <tr data-host="${t.host}" data-port="${t.port}" data-proto="${t.proto || "udp"}">
+        <td><span class="dot ${dot}"></span></td>
+        <td><code>${t.host}</code></td>
+        <td>${t.port}</td>
+        <td>${t.proto || "?"}</td>
+        <td class="muted small">${note}</td>
+        <td><button class="ghost edge-target-remove" title="Remove target">×</button></td>
+      </tr>`;
+  }).join("");
+
   return `
-    <div class="kv"><span>status</span><span>${reachRow}</span></div>
-    <div class="kv"><span>device</span><span>${devRow}</span></div>
-    <div class="kv"><span>gps</span><span>${gpsRow}</span></div>
-    <div class="kv"><span>ntp</span><span><span class="dot ${ntpDot}"></span> ${ntpStateText}</span></div>
-    <div class="node-actions">
-      <a class="node-action-btn" href="${state.web_url}" target="_blank" rel="noopener">Open Router UI ↗</a>
-      ${ntpBtn}
+    <div class="node-actions">${cliBtn}${srvBtn}</div>
+
+    <div class="node-section-hdr">GPS Forwarding Targets</div>
+    <table class="edge-targets">
+      <thead><tr><th></th><th>Host</th><th>Port</th><th>Proto</th><th></th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="muted small">no targets configured</td></tr>`}</tbody>
+    </table>
+    <div class="edge-add-target">
+      <input class="edge-target-host"  type="text"   placeholder="hostname or IP" />
+      <input class="edge-target-port"  type="number" placeholder="8500" value="8500" />
+      <select class="edge-target-proto">
+        <option value="udp" selected>udp</option>
+        <option value="tcp">tcp</option>
+      </select>
+      <button class="node-action-btn" id="edge-target-add">Add Target</button>
     </div>
   `;
 }
+
+// Replace the NMEA-forwarding host_info list with the rows currently
+// rendered in the panel, minus/plus the operator's edit. We rebuild
+// the list from the DOM so we never desync against stale state.
+async function _putEdgeHosts(panel, hosts) {
+  const res = await fetch("/api/edge/gps/forwarding/hosts", {
+    method:  "PUT",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ hosts }),
+  });
+  if (!res.ok) {
+    panel.querySelector(".node-section-hdr")?.insertAdjacentHTML(
+      "afterend", `<div class="err small">update failed: HTTP ${res.status}</div>`);
+    return false;
+  }
+  // Re-render the whole panel against fresh state. Cascaded: immediate
+  // catches the new target list; +2 s usually catches a fresh-NMEA
+  // arrival after re-adding our IP (router pushes ~1 Hz); +5 s and
+  // +9 s catch the freshness window closing after a remove. Each
+  // delayed re-render skips itself if the operator is typing into an
+  // input so we don't clobber in-progress text.
+  await _rerenderEdgePanel(panel);
+  for (const ms of [2000, 5000, 9000]) {
+    setTimeout(() => _rerenderEdgePanel(panel, /*skipIfFocused=*/true), ms);
+  }
+  return true;
+}
+
+async function _rerenderEdgePanel(panel, skipIfFocused) {
+  if (!panel || !panel.isConnected) return;
+  if (skipIfFocused) {
+    const focused = document.activeElement;
+    if (focused && panel.contains(focused) &&
+        focused.matches("input, select, textarea")) return;
+  }
+  const row = panel.previousElementSibling;
+  const node = row ? nodeList.find((x) => x.id === row.dataset.id) : null;
+  const render = node ? expanderFor(node) : null;
+  if (render) panel.innerHTML = await render(node);
+}
+
+function _readEdgeTargetRows(panel) {
+  return Array.from(panel.querySelectorAll(".edge-targets tbody tr[data-host]"))
+    .map((tr) => ({
+      host:  tr.dataset.host,
+      port:  parseInt(tr.dataset.port, 10),
+      proto: tr.dataset.proto || "udp",
+    }));
+}
+
+document.addEventListener("click", async (e) => {
+  const removeBtn = e.target.closest(".edge-target-remove");
+  const addBtn    = e.target.closest("#edge-target-add");
+  if (!removeBtn && !addBtn) return;
+  const panel = e.target.closest(".node-row-details");
+  if (!panel) return;
+  if (removeBtn) {
+    const tr = removeBtn.closest("tr[data-host]");
+    if (!tr) return;
+    const drop = { host: tr.dataset.host, port: parseInt(tr.dataset.port, 10) };
+    const next = _readEdgeTargetRows(panel)
+      .filter((t) => !(t.host === drop.host && t.port === drop.port));
+    removeBtn.disabled = true;
+    await _putEdgeHosts(panel, next);
+  } else {
+    const hostI  = panel.querySelector(".edge-target-host");
+    const portI  = panel.querySelector(".edge-target-port");
+    const protoI = panel.querySelector(".edge-target-proto");
+    const host   = (hostI.value || "").trim();
+    const port   = parseInt(portI.value, 10);
+    const proto  = protoI.value;
+    if (!host || !port) return;
+    const next = _readEdgeTargetRows(panel).concat([{ host, port, proto }]);
+    addBtn.disabled = true;
+    await _putEdgeHosts(panel, next);
+  }
+});
 
 async function renderBSIExpansion(_node) {
   const [state, pgwStat] = await Promise.all([

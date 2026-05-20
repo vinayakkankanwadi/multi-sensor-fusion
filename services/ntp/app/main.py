@@ -182,3 +182,14 @@ def sources() -> dict:
     return {"servers": _SERVERS,
             "interval_s": _INTERVAL_S,
             "results": dict(_PER_SOURCE)}
+
+
+@app.post("/ntp/refresh", status_code=200)
+async def refresh_now() -> dict:
+    """Force an immediate probe round so callers can avoid waiting
+    `interval_s` after side-effects (e.g. the UI toggling a remote
+    NTP server) before reading fresh state."""
+    await _probe_round()
+    return {"refreshed_at": time.time(),
+            "results": dict(_PER_SOURCE),
+            "voted": dict(_VOTED)}

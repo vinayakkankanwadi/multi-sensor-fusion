@@ -129,9 +129,10 @@ function setMode(newMode) {
   mode = newMode;
   $("#mode-single").classList.toggle("active", mode === "single");
   $("#mode-flow").classList.toggle("active", mode === "flow");
-  // Show only the active mode's pane so the editor and the flow table
-  // never share vertical space (previously caused overlap).
-  $("#single-pane").hidden = mode !== "single";
+  // Editor (single-pane) stays visible in both modes — in flow mode it
+  // previews whatever template was just clicked. Flow steps table lives
+  // in the Result pane and only shows in flow mode.
+  $("#single-pane").hidden = false;
   $("#flow-pane").hidden   = mode !== "flow";
   // Action buttons live in the tabs row; swap which mode's buttons are
   // visible. .single-only ⇒ shown only in single mode; .flow-only ⇒ shown

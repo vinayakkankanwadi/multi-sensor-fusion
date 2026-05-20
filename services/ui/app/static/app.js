@@ -129,8 +129,10 @@ function setMode(newMode) {
   mode = newMode;
   $("#mode-single").classList.toggle("active", mode === "single");
   $("#mode-flow").classList.toggle("active", mode === "flow");
-  $("#single-pane").hidden = false;
-  $("#flow-pane").hidden = mode !== "flow";
+  // Show only the active mode's pane so the editor and the flow table
+  // never share vertical space (previously caused overlap).
+  $("#single-pane").hidden = mode !== "single";
+  $("#flow-pane").hidden   = mode !== "flow";
   // Action buttons live in the tabs row; swap which mode's buttons are
   // visible. .single-only ⇒ shown only in single mode; .flow-only ⇒ shown
   // only in flow mode; un-classed buttons (Validate, Reset) show in both.

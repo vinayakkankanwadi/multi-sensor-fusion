@@ -9,7 +9,6 @@ description = "Convert SAPIENT BSI Flex 335 v2 protobuf messages into Cursor-on-
 requires-python = ">=3.10"
 dependencies = ["protobuf>=4.25,<5"]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["sapient_msg_to_cot*"]
-exclude = ["tests*"]
+# Single-file module — declares itself, no package directory.
+[tool.setuptools]
+py-modules = ["sapient_msg_to_cot"]

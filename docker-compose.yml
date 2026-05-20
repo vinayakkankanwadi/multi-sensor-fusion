@@ -64,6 +64,12 @@ services:
       NTP_URL:        "http://127.0.0.1:8091"
       NODES_URL:      "http://127.0.0.1:8093"
       REGRESSION_URL: "http://127.0.0.1:8094"
+      # Teltonika router admin credentials — used by the EdgeNode
+      # backend (services/ui/app/edge) to fetch device/gps status via
+      # the RutOS REST API. Override with a shell env at compose-up time
+      # if the deployment uses different credentials.
+      ROUTER_USER:     "${ROUTER_USER:-admin}"
+      ROUTER_PASSWORD: "${ROUTER_PASSWORD:-password}"
       # Propagate the host's X11 cookies into the UI container so that
       # when the backend shells out to `docker compose up apex-gui`, the
       # apex-gui service inherits the right DISPLAY and can draw on the

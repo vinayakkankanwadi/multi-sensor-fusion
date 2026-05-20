@@ -24,10 +24,9 @@ function saveEndpoint() {
   localStorage.setItem(STORE_KEY, JSON.stringify(data));
 }
 
-// Nodes registry — drives the unified drawer (platform-node + middleware
-// today; edge-node / tak-server / fusion-node tomorrow). The selected
-// send target is always a middleware-type entry; other types render
-// without a radio.
+// Nodes registry — drives the unified drawer (edge-node + middleware +
+// tak-server today; fusion-node tomorrow). The selected send target is
+// always a middleware-type entry; other types render without a radio.
 let nodeList = [];
 let selectedTargetId = null;
 
@@ -667,9 +666,10 @@ function renderServiceList() {
 // node type/name grows drilldown. Each `match` is given the node object;
 // each `render` returns the HTML to inject under the row.
 const NODE_EXPANDERS = [
-  { match: (n) => n.name === "Apex Local",  render: renderApexExpansion },
-  { match: (n) => n.name === "BSI Windows", render: renderBSIExpansion  },
-  { match: (n) => n.type === "tak-server",  render: renderTAKExpansion  },
+  { match: (n) => n.name === "Apex Local",     render: renderApexExpansion },
+  { match: (n) => n.name === "BSI Windows",    render: renderBSIExpansion  },
+  { match: (n) => n.type === "tak-server",     render: renderTAKExpansion  },
+  { match: (n) => n.type === "edge-node",  render: renderEdgeExpansion },
 ];
 
 function expanderFor(node) {
@@ -728,6 +728,43 @@ async function renderTAKExpansion(_node) {
       <a class="node-action-btn" href="${url}" target="_blank" rel="noopener">Open WebTAK ↗</a>
     </div>
     <iframe class="node-iframe" src="${url}" title="WebTAK"></iframe>
+  `;
+}
+
+async function renderEdgeExpansion(_node) {
+  const state = await fetch("/api/edge/state").then((r) => r.ok ? r.json() : { available: false, reason: `HTTP ${r.status}` });
+  if (!state.available) {
+    return `
+      <div class="kv"><span>status</span><span><span class="dot status-warn"></span> router unreachable: ${state.reason || "?"}</span></div>
+    `;
+  }
+  const dev = state.device || {};
+  const gps = state.gps || {};
+  const ntp = state.ntp || {};
+  const reachRow = `<span class="dot status-ok"></span> reachable · ${state.host}`;
+  const devRow = `${dev.model || "?"} · <code>${dev.hostname || "?"}</code> · fw ${dev.fw_version || "?"}`;
+  const fix = (gps.fix_status || "").toLowerCase();
+  const gpsDot = fix === "fix" || fix === "3d" || fix === "2d" ? "status-ok" : "status-warn";
+  const gpsRow = (gps.latitude != null && gps.longitude != null)
+    ? `<span class="dot ${gpsDot}"></span> ${gps.fix_status || "?"} · ${gps.satellites || 0} sats · ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`
+    : `<span class="dot ${gpsDot}"></span> ${gps.fix_status || "no fix"} · ${gps.satellites || 0} sats`;
+  const ntpDot = ntp.server_enabled ? "status-ok" : "status-warn";
+  const ntpStateText = ntp.server_enabled
+    ? `enabled · ${ntp.router_time_iso || "?"}` +
+      (ntp.offset_s != null ? ` · offset ${(ntp.offset_s * 1000).toFixed(0)} ms` : ``)
+    : `disabled · ${ntp.error || "no reply"}`;
+  const ntpBtn = ntp.server_enabled
+    ? ``
+    : `<button class="node-action-btn" data-action="edge.ntp.enable">Enable NTP Server</button>`;
+  return `
+    <div class="kv"><span>status</span><span>${reachRow}</span></div>
+    <div class="kv"><span>device</span><span>${devRow}</span></div>
+    <div class="kv"><span>gps</span><span>${gpsRow}</span></div>
+    <div class="kv"><span>ntp</span><span><span class="dot ${ntpDot}"></span> ${ntpStateText}</span></div>
+    <div class="node-actions">
+      <a class="node-action-btn" href="${state.web_url}" target="_blank" rel="noopener">Open Router UI ↗</a>
+      ${ntpBtn}
+    </div>
   `;
 }
 
@@ -818,12 +855,12 @@ async function loadNodes() {
   // service's /api/nodes?type=… filter; doing two filtered fetches keeps
   // this synced with the service-side typing rather than reproducing
   // type lists client-side.
-  const platform = await _fetchByType("platform-node");
+  const edge = await _fetchByType("edge-node");
   const middleware = await _fetchByType("middleware");
   const tak = await _fetchByType("tak-server");
-  nodeList = [...platform.nodes, ...middleware.nodes, ...tak.nodes];
+  nodeList = [...edge.nodes, ...middleware.nodes, ...tak.nodes];
 
-  const cfgErr = platform.config_error || middleware.config_error || tak.config_error;
+  const cfgErr = edge.config_error || middleware.config_error || tak.config_error;
   const status = $("#nodes-status");
   if (cfgErr) {
     status.textContent = `service: ${cfgErr}`;
@@ -878,7 +915,7 @@ async function _fetchByType(type) {
   }
 }
 
-function _platformNodeServicesTooltip(n) {
+function _edgeNodeServicesTooltip(n) {
   const lines = [`${n.name} · ${n.host}`];
   for (const [kind, svc] of Object.entries(n.services || {})) {
     const sev = svc.severity || "unknown";
@@ -920,13 +957,13 @@ function _populateNodeRow(row, n) {
 
   let secondaryHtml = "";
   let titleStr = "";
-  if (n.type === "platform-node") {
+  if (n.type === "edge-node") {
     const chips = Object.entries(n.services || {}).map(([kind, svc]) => {
       const sub = (svc && svc.severity) || "unknown";
       return `<span class="svc"><span class="dot status-${sub}"></span>${kind}</span>`;
     }).join("");
     secondaryHtml = `<span class="svcs">${chips}</span>`;
-    titleStr = _platformNodeServicesTooltip(n);
+    titleStr = _edgeNodeServicesTooltip(n);
   } else if (n.type === "middleware") {
     secondaryHtml = `<span class="kind muted small">${n.kind || "—"}</span>`;
     titleStr = _middlewareTooltip(n);
@@ -1050,7 +1087,7 @@ function openNodeForm(existing) {
     form.elements.host.value = existing.host || "";
     form.elements.port.value = existing.port ?? "";
     form.elements.description.value = existing.description || "";
-    if (existing.type === "platform-node") {
+    if (existing.type === "edge-node") {
       const wanted = new Set(existing.services_enabled || existing.services || []);
       form.querySelectorAll('input[name="services"]').forEach((cb) => {
         cb.checked = wanted.has(cb.value);
@@ -1084,7 +1121,7 @@ function closeNodeForm() {
 
 function _updateFormTypeVisibility(type) {
   $("#node-form").querySelectorAll(".platform-only").forEach((el) => {
-    el.style.display = (type === "platform-node") ? "" : "none";
+    el.style.display = (type === "edge-node") ? "" : "none";
   });
   $("#node-form").querySelectorAll(".middleware-only").forEach((el) => {
     el.style.display = (type === "middleware") ? "" : "none";
@@ -1117,7 +1154,7 @@ async function submitNodeForm(e) {
   if (desc) body.description = desc;
 
   const type = mode === "create" ? body.type : form.elements.type.value;
-  if (type === "platform-node") {
+  if (type === "edge-node") {
     body.services = Array.from(form.querySelectorAll('input[name="services"]:checked'))
                          .map((cb) => cb.value);
   } else if (type === "middleware") {

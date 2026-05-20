@@ -331,7 +331,7 @@ button.ghost.small.status-fail::before { background: #f85149; }
   text-align: center;
 }
 .type-badge.type-middleware    { background: #1f3a59; color: #79c0ff; }
-.type-badge.type-platform-node { background: #1d3325; color: #7ee787; }
+.type-badge.type-edge-node     { background: #1d3325; color: #7ee787; }
 .type-badge.type-tak-server    { background: #4a2317; color: #ffa657; }
 .row-actions {
   display: flex;

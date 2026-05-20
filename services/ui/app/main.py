@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .apex.routes    import router as apex_router
 from .bsi.routes     import router as bsi_router
+from .edge.routes    import router as edge_router
 from .message import proto_to_template, templates
 from .message.routes import router as message_router
 from .nodes.routes   import router as nodes_router
@@ -78,6 +79,7 @@ def health() -> dict:
 app.include_router(apex_router)
 app.include_router(bsi_router)
 app.include_router(tak_router)
+app.include_router(edge_router)
 app.include_router(nodes_router)
 app.include_router(message_router)
 app.include_router(tests_router)

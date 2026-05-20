@@ -1,11 +1,11 @@
 """nodes — unified registry + status service for every named resource on
 the platform.
 
-A *node* is anything the platform tracks: the LAN router (`platform-node`),
-a SAPIENT middleware (`middleware`), a TAK Server (`tak-server`, future),
-an edge / fusion node (`edge-node` / `fusion-node`, future). The shape is
-the same for all of them — `{id, type, name, host, …, status, severity}`
-— and each type plugs in its own probe strategy under `app.probes.*`.
+A *node* is anything the platform tracks: the LAN router (`edge-node`),
+a SAPIENT middleware (`middleware`), a TAK Server (`tak-server`), a
+service in this stack (`service`). The shape is the same for all of them
+— `{id, type, name, host, …, status, severity}` — and each type plugs in
+its own probe strategy under `app.probes.*`.
 
 This service replaces the older split into `nodes` (platform health)
 and `middlewares` (SAPIENT endpoints). Both are now filtered views of
@@ -90,7 +90,7 @@ def _http_get_json(url: str, timeout: float) -> dict:
 
 
 async def _fetch_context() -> dict:
-    """Pre-fetch the upstreams platform-node probes need, in parallel.
+    """Pre-fetch the upstreams edge-node probes need, in parallel.
     Returns a dict the probe modules can pull from."""
     async def _safe(url: str) -> dict | None:
         try:
@@ -191,7 +191,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="nodes",
               version="1",
-              description="Unified registry + status for every platform resource (platform-node, middleware, …).",
+              description="Unified registry + status for every platform resource (edge-node, middleware, …).",
               lifespan=_lifespan)
 
 
@@ -218,7 +218,7 @@ async def refresh_now() -> dict:
 @app.get("/nodes/current")
 def current(type: str | None = None) -> dict:
     """Latest known status for every node. `?type=…` filters the result —
-    used by the UI's two drawers to render only platform-nodes or only
+    used by the UI's two drawers to render only edge-nodes or only
     middleware entries from the same source of truth."""
     items = list(_STATE.values())
     if type:
@@ -241,7 +241,7 @@ import re
 # Known types: every entry's `type` must be one of these. Adding a new
 # type means adding a probe module under app/probes/ and registering it
 # in app/probes/__init__.py.
-KNOWN_TYPES = {"platform-node", "middleware", "service", "tak-server"}
+KNOWN_TYPES = {"edge-node", "middleware", "service", "tak-server"}
 
 # id must be DNS-label-safe so we can use it in URL paths without
 # escaping. Same character set as a docker container name.
@@ -266,14 +266,14 @@ def _validate_type_specific(entry: dict) -> None:
             status_code=400,
             detail=f"unknown type {t!r}; must be one of {sorted(KNOWN_TYPES)}",
         )
-    if t == "platform-node":
+    if t == "edge-node":
         services = entry.get("services") or []
         if not isinstance(services, list):
             raise HTTPException(status_code=400, detail="services must be a list")
         unknown = [s for s in services if s not in ("ntp", "gps")]
         if unknown:
             raise HTTPException(status_code=400,
-                                detail=f"unknown platform-node services: {unknown}")
+                                detail=f"unknown edge-node services: {unknown}")
     elif t == "middleware":
         if "port" not in entry:
             raise HTTPException(status_code=400, detail="middleware requires port")

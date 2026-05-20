@@ -1,7 +1,7 @@
 [
   {
     "id": "router",
-    "type": "platform-node",
+    "type": "edge-node",
     "name": "EdgeNode",
     "host": "192.168.201.1",
     "services": [

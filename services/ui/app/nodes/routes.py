@@ -60,7 +60,7 @@ def _proxy_error(exc: Exception) -> HTTPException:
 @router.get("")
 async def list_nodes(type: str | None = None) -> dict:
     """Unified registry + status for every named platform resource. `?type=…`
-    filters to a subset (platform-node, middleware, service, tak-server)."""
+    filters to a subset (edge-node, middleware, service, tak-server)."""
     return await client.fetch_current(type=type)
 
 

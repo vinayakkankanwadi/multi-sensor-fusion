@@ -4,7 +4,7 @@ Three concerns in one file (one test_<service>.py per service convention):
   1. health
   2. CRUD (POST/PATCH/DELETE on /nodes)
   3. severity computation per node type (middleware, service, tak-server,
-     platform-node). POST/PATCH/DELETE each force an immediate probe round
+     edge-node). POST/PATCH/DELETE each force an immediate probe round
      so the next GET reflects the just-set config — no reliance on the
      NODES_INTERVAL_S poll cadence.
 """
@@ -100,10 +100,10 @@ def test_post_service_requires_probe_config(http, nodes_url):
     assert "health_path" in r.json().get("detail", "").lower()
 
 
-def test_post_platform_node_rejects_unknown_subservice(http, nodes_url):
+def test_post_edge_node_rejects_unknown_subservice(http, nodes_url):
     r = http.post(f"{nodes_url}/nodes", json={
         "id": f"test-pn-{uuid.uuid4().hex[:6]}",
-        "type": "platform-node", "name": "x",
+        "type": "edge-node", "name": "x",
         "host": "10.0.0.1", "services": ["ntp", "gps", "magic"],
     })
     assert r.status_code == 400
@@ -332,15 +332,15 @@ def test_tak_server_tcp_admin_probe_fail_on_refused(http, nodes_url, created_nod
     assert n["severity"] == "fail"
 
 
-# ---------- platform-node composition ------------------------------------
+# ---------- edge-node composition ----------------------------------------
 
-def test_platform_node_composes_ntp_and_gps(http, nodes_url):
-    """The router (a platform-node) aggregates NTP + GPS into a single
+def test_edge_node_composes_ntp_and_gps(http, nodes_url):
+    """The router (an edge-node) aggregates NTP + GPS into a single
     composed severity. Verify the /nodes/current view exposes both
     sub-service severities and a composed top-level severity."""
     http.post(f"{nodes_url}/nodes/refresh", timeout=10.0)
-    items = http.get(f"{nodes_url}/nodes/current?type=platform-node").json()["nodes"]
-    assert items, "no platform-node configured — expected at least 'router'"
+    items = http.get(f"{nodes_url}/nodes/current?type=edge-node").json()["nodes"]
+    assert items, "no edge-node configured — expected at least 'router'"
     n = items[0]
     assert "services" in n
     assert "ntp" in n["services"]

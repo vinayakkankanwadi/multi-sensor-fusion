@@ -1,7 +1,7 @@
-"""platform-node probe — composes per-service health (NTP, GPS) from the
+"""edge-node probe — composes per-service health (NTP, GPS) from the
 external service-of-record (ntp + gps) into one rolled-up status.
 
-A platform node is an upstream host that *provides* services to the rest
+An edge node is an upstream host that *provides* services to the rest
 of the stack (today: the router, which serves both NTP and GPS NMEA).
 The node's overall severity is the worst of its enabled services.
 """

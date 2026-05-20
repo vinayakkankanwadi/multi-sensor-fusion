@@ -13,18 +13,18 @@ from __future__ import annotations
 
 from typing import Awaitable, Callable
 
+from . import edge_node as _edge_node
 from . import middleware as _middleware
-from . import platform_node as _platform_node
 from . import service as _service
 from . import tak_server as _tak_server
 
 ProbeFn = Callable[[dict, dict], "Awaitable[dict]"]
 
 REGISTRY: dict[str, ProbeFn] = {
-    "platform-node": _platform_node.probe,
-    "middleware":    _middleware.probe,
-    "service":       _service.probe,
-    "tak-server":    _tak_server.probe,
+    "edge-node":  _edge_node.probe,
+    "middleware": _middleware.probe,
+    "service":    _service.probe,
+    "tak-server": _tak_server.probe,
 }
 
 

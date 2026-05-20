@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=42">
+<link rel="stylesheet" href="/static/style.css?v=44">
 </head>
 <body>
 <header>
@@ -57,6 +57,15 @@
     </label>
     <label>recv timeout (s) <input id="recv-timeout" type="number" step="0.5" min="0" max="60" value="5"></label>
     <label>drain after (s)  <input id="drain-after"  type="number" step="0.5" min="0" max="60" value="1"></label>
+    <label title="Latitude substituted for {{GPS_LAT}} when this template is sent. Auto-filled from the GPS service; Brisbane CBD when no fix.">
+      Lat <input id="gps-lat" type="text" readonly>
+    </label>
+    <label title="Longitude substituted for {{GPS_LON}}.">
+      Lon <input id="gps-lon" type="text" readonly>
+    </label>
+    <label title="Altitude (m) substituted for {{GPS_ALT}}.">
+      Alt <input id="gps-alt" type="text" readonly>
+    </label>
     <label class="checkbox">
       <input id="validate-before" type="checkbox">
       <span>Validate before send</span>
@@ -281,6 +290,6 @@
   </form>
 </div>
 
-<script src="/static/app.js?v=42"></script>
+<script src="/static/app.js?v=44"></script>
 </body>
 </html>

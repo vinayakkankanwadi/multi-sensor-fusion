@@ -229,6 +229,7 @@ async function runFlow() {
       port: mw.port,
       node_id: ensureUUID(),
       validate_before_send: $("#validate-before").checked,
+      ..._gpsBody(),
       steps: flowSteps.map((s) => {
         const step = {
           template_name: s.template_name,
@@ -352,6 +353,48 @@ async function reloadFromDisk() {
   $("#editor").value = data.raw;
 }
 
+// Brisbane CBD — matches services/ui/app/message/templates.py fallbacks.
+// Used when the GPS service has no fix yet so the inputs are never blank.
+const GPS_FALLBACK_LAT = -27.4705;
+const GPS_FALLBACK_LON = 153.0260;
+const GPS_FALLBACK_ALT = 28.0;
+
+function _gpsBody() {
+  const lat = parseFloat($("#gps-lat").value);
+  const lon = parseFloat($("#gps-lon").value);
+  const alt = parseFloat($("#gps-alt").value);
+  const out = {};
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    out.gps_lat = lat;
+    out.gps_lon = lon;
+    if (Number.isFinite(alt)) out.gps_alt = alt;
+  }
+  return out;
+}
+
+async function _gpsAutoTick() {
+  let lat = GPS_FALLBACK_LAT, lon = GPS_FALLBACK_LON, alt = GPS_FALLBACK_ALT;
+  try {
+    const r = await fetch("/api/edge/state");
+    if (r.ok) {
+      const fix = (await r.json())?.gps?.fix;
+      if (fix?.latitude  != null) lat = fix.latitude;
+      if (fix?.longitude != null) lon = fix.longitude;
+      if (fix?.altitude  != null) alt = fix.altitude;
+    }
+  } catch { /* keep fallbacks */ }
+  $("#gps-lat").value = lat.toFixed(7);
+  $("#gps-lon").value = lon.toFixed(7);
+  $("#gps-alt").value = alt.toFixed(2);
+}
+
+function _initGpsAutoFill() {
+  // Fields are readonly — no manual-override dance. Just refresh on a
+  // cadence so the values you see are the values that get sent.
+  _gpsAutoTick();
+  setInterval(_gpsAutoTick, 3000);
+}
+
 function buildSendBody() {
   const mw = selectedTarget();
   if (!mw) throw new Error("select a middleware first");
@@ -360,6 +403,7 @@ function buildSendBody() {
     port: mw.port,
     node_id: ensureUUID(),
     validate_before_send: $("#validate-before").checked,
+    ..._gpsBody(),
     steps: [{
       template_name: currentTemplate,
       raw_json: $("#editor").value,
@@ -406,6 +450,7 @@ async function validateOnly() {
         node_id: $("#node-id").value.trim() || newUUID(),
         template_name: currentTemplate,
         raw_json: $("#editor").value,
+        ..._gpsBody(),
       }),
     });
     const result = await r.json();
@@ -1509,6 +1554,9 @@ function init() {
   });
   $("#validate-before").addEventListener("change", saveEndpoint);
   $("#auto-new-uuid").addEventListener("change", saveEndpoint);
+  // GPS lat/lon: auto-fill from services/gps every 3 s; operator
+  // edits flip data-auto=false so we stop overwriting. ↻ re-arms.
+  _initGpsAutoFill();
   refreshSendButton();
 
   loadNodes();

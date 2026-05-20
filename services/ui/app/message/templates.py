@@ -115,16 +115,25 @@ def _substitute(text: str, *, node_id: str,
 
 
 async def render(template_text: str, *,
-                 node_id: str) -> _msg.SapientMessage:
+                 node_id: str,
+                 gps_override: tuple[float, float, float] | None = None,
+                 ) -> _msg.SapientMessage:
     """Substitute placeholders, then parse JSON into a SapientMessage.
 
-    GPS is fetched live from the gps service only if the template uses
-    {{GPS_*}}; falls back to Brisbane CBD if the service has no fix.
+    GPS resolution order:
+      1. `gps_override` (caller-supplied — usually the visible LAT/LON
+         in the UI form, so operator edits take precedence)
+      2. live fetch from services/gps if the template uses {{GPS_*}}
+      3. Brisbane CBD fallback
     """
     if not _is_valid_uuid(node_id):
         raise ValueError(f"node_id is not a valid UUID: {node_id!r}")
-    gps = await _resolve_gps() if _GPS_RE.search(template_text) \
-        else (_FALLBACK_LAT, _FALLBACK_LON, _FALLBACK_ALT)
+    if gps_override is not None:
+        gps = gps_override
+    elif _GPS_RE.search(template_text):
+        gps = await _resolve_gps()
+    else:
+        gps = (_FALLBACK_LAT, _FALLBACK_LON, _FALLBACK_ALT)
     text = _substitute(template_text, node_id=node_id, gps=gps)
     msg = _msg.SapientMessage()
     json_format.Parse(text, msg, ignore_unknown_fields=False)

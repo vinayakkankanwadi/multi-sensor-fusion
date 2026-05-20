@@ -65,6 +65,22 @@ class ValidateRequest(BaseModel):
     node_id: str
     template_name: str | None = None
     raw_json: str | None = None
+    # Operator-visible LAT/LON overrides from the message-controls row.
+    # When both are present, they short-circuit the live-GPS / Brisbane
+    # fallback chain in templates.render — see templates.render() docs.
+    gps_lat: float | None = None
+    gps_lon: float | None = None
+    gps_alt: float | None = None
+
+
+def _gps_override(req) -> tuple[float, float, float] | None:
+    """Return (lat, lon, alt) tuple if the operator supplied lat+lon on
+    the request; altitude is optional and defaults to Brisbane's value
+    when omitted. Caller passes the tuple to templates.render."""
+    if req.gps_lat is None or req.gps_lon is None:
+        return None
+    alt = req.gps_alt if req.gps_alt is not None else templates._FALLBACK_ALT
+    return (float(req.gps_lat), float(req.gps_lon), float(alt))
 
 
 @router.post("/api/validate")
@@ -73,7 +89,8 @@ async def validate(req: ValidateRequest) -> dict:
     try:
         text = (req.raw_json if req.raw_json is not None
                 else templates.get_template(req.template_name))
-        message = await templates.render(text, node_id=req.node_id)
+        message = await templates.render(text, node_id=req.node_id,
+                                          gps_override=_gps_override(req))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -100,6 +117,10 @@ class FlowRequest(BaseModel):
     node_id: str
     steps: list[FlowStep]
     validate_before_send: bool = False
+    # See ValidateRequest — same operator-supplied LAT/LON pass-through.
+    gps_lat: float | None = None
+    gps_lon: float | None = None
+    gps_alt: float | None = None
 
 
 async def _run_flow_impl(req: FlowRequest) -> dict:
@@ -115,6 +136,7 @@ async def _run_flow_impl(req: FlowRequest) -> dict:
         return await flow.run_flow(
             host=req.host.strip(), port=req.port, node_id=req.node_id,
             steps=steps, validate_before_send=req.validate_before_send,
+            gps_override=_gps_override(req),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

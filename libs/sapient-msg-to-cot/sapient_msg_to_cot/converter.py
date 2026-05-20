@@ -1,26 +1,17 @@
 """SAPIENT BSI Flex 335 v2 → Cursor-on-Target (CoT) converter.
 
-Each SAPIENT message that has (or implies) a position becomes a CoT event:
+Registration / StatusReport / DetectionReport / Alert become CoT events;
+RegistrationAck / TaskAck / AlertAck / Task / Error return None.
 
-  Registration       → marker for the edge node itself (callsign, type from node_type)
-  StatusReport       → refresh of the edge-node marker (uses status_report.node_location)
-  DetectionReport    → marker for the detected object  (uses detection_report.location)
-  Alert              → high-priority marker            (uses alert.location)
-
-If a message lacks a usable position, the caller can supply a `fallback_lat`/
-`fallback_lon`/`fallback_alt` (e.g. the edge node's GPS reading) and the
-converter will use that. If no position is available at all, the function
-returns None — callers should not push positionless events to TAK.
-
-Output is the byte payload of one CoT event, ready to UDP-send to a TAK
-Server CoT input.
+When a message lacks a usable position the caller can pass
+`fallback_lat`/`fallback_lon`/`fallback_alt`; if neither is available
+the converter returns None — callers should not push positionless events
+to TAK.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Iterable
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from sapient_msg.bsi_flex_335_v2_0 import (
@@ -29,36 +20,34 @@ from sapient_msg.bsi_flex_335_v2_0 import (
 )
 
 
-# --- 2525C / TAK type codes -------------------------------------------------
-# Registration node_type → CoT event.type. Edges are friendly by default.
+# Registration node_type → CoT event.type (2525C). Edges are friendly.
 NODE_TYPE_TO_COT = {
-    _reg.Registration.NODE_TYPE_RADAR:           "a-f-G-E-S-R",   # Friend Ground Equipment Sensor Radar
-    _reg.Registration.NODE_TYPE_LIDAR:           "a-f-G-E-S",     # Sensor (no LIDAR-specific symbol)
-    _reg.Registration.NODE_TYPE_CAMERA:          "a-f-G-E-S-E",   # Sensor Electro-optical
+    _reg.Registration.NODE_TYPE_RADAR:           "a-f-G-E-S-R",
+    _reg.Registration.NODE_TYPE_LIDAR:           "a-f-G-E-S",
+    _reg.Registration.NODE_TYPE_CAMERA:          "a-f-G-E-S-E",
     _reg.Registration.NODE_TYPE_SEISMIC:         "a-f-G-E-S",
     _reg.Registration.NODE_TYPE_ACOUSTIC:        "a-f-G-E-S",
     _reg.Registration.NODE_TYPE_PROXIMITY_SENSOR:"a-f-G-E-S",
-    _reg.Registration.NODE_TYPE_PASSIVE_RF:      "a-f-G-E-S-W",   # Sensor (RF Warfare)
-    _reg.Registration.NODE_TYPE_HUMAN:           "a-f-G-U-C-I",   # Friend Unit Combat Infantry
+    _reg.Registration.NODE_TYPE_PASSIVE_RF:      "a-f-G-E-S-W",
+    _reg.Registration.NODE_TYPE_HUMAN:           "a-f-G-U-C-I",
     _reg.Registration.NODE_TYPE_CHEMICAL:        "a-f-G-E-S",
     _reg.Registration.NODE_TYPE_BIOLOGICAL:      "a-f-G-E-S",
     _reg.Registration.NODE_TYPE_RADIATION:       "a-f-G-E-S",
-    _reg.Registration.NODE_TYPE_KINETIC:         "a-f-G-E-V-A",   # Friend Equipment Vehicle Armoured
-    _reg.Registration.NODE_TYPE_JAMMER:          "a-f-G-E-X-J",   # EW Jammer
-    _reg.Registration.NODE_TYPE_CYBER:           "a-f-G-U",       # Generic friendly unit
-    _reg.Registration.NODE_TYPE_LDEW:            "a-f-G-E-W-L",   # Weapon Laser
-    _reg.Registration.NODE_TYPE_RFDEW:           "a-f-G-E-W-D",   # Weapon Directed Energy
+    _reg.Registration.NODE_TYPE_KINETIC:         "a-f-G-E-V-A",
+    _reg.Registration.NODE_TYPE_JAMMER:          "a-f-G-E-X-J",
+    _reg.Registration.NODE_TYPE_CYBER:           "a-f-G-U",
+    _reg.Registration.NODE_TYPE_LDEW:            "a-f-G-E-W-L",
+    _reg.Registration.NODE_TYPE_RFDEW:           "a-f-G-E-W-D",
     _reg.Registration.NODE_TYPE_MOBILE_NODE:     "a-f-G-U",
     _reg.Registration.NODE_TYPE_POINTABLE_NODE:  "a-f-G-E-S",
-    _reg.Registration.NODE_TYPE_FUSION_NODE:     "a-f-G-U-H",     # Headquarters
+    _reg.Registration.NODE_TYPE_FUSION_NODE:     "a-f-G-U-H",
     _reg.Registration.NODE_TYPE_OTHER:           "a-f-G-U",
     _reg.Registration.NODE_TYPE_UNSPECIFIED:     "a-f-G-U",
 }
 
-# Default for detections (unknown affiliation, ground)
 DETECTION_DEFAULT_TYPE = "a-u-G"
-# Alerts are typically threats — hostile until proven otherwise.
-ALERT_DEFAULT_TYPE = "a-h-G"
+ALERT_DEFAULT_TYPE     = "a-h-G"
+NODE_DEFAULT_TYPE      = "a-f-G-U"
 
 
 def _utc(t: datetime) -> str:
@@ -68,9 +57,7 @@ def _utc(t: datetime) -> str:
 def _build_cot(*, uid: str, cot_type: str,
                lat: float, lon: float, hae: float,
                callsign: str, remarks: str,
-               stale_seconds: int = 300,
-               group_name: str = "Cyan",
-               group_role: str = "Team Member") -> bytes:
+               stale_seconds: int) -> bytes:
     now = datetime.now(timezone.utc)
     stale = now + timedelta(seconds=stale_seconds)
     event = Element("event", {
@@ -84,7 +71,7 @@ def _build_cot(*, uid: str, cot_type: str,
     })
     detail = SubElement(event, "detail")
     SubElement(detail, "contact", {"callsign": callsign})
-    SubElement(detail, "__group", {"name": group_name, "role": group_role})
+    SubElement(detail, "__group", {"name": "Cyan", "role": "Team Member"})
     SubElement(detail, "precisionlocation", {"altsrc": "GPS", "geopointsrc": "GPS"})
     if remarks:
         r = SubElement(detail, "remarks")
@@ -93,130 +80,104 @@ def _build_cot(*, uid: str, cot_type: str,
 
 
 def _location_from(loc) -> tuple[float, float, float] | None:
-    """Pull (lat, lon, alt) from a SAPIENT Location message if usable."""
-    if loc is None:
+    # SAPIENT v2 location.proto: x=lat, y=lon when coordinate_system is
+    # LAT_LNG_DEG_M (the over-the-wire choice the ui's templates use).
+    if loc is None or not loc.HasField("x") or not loc.HasField("y"):
         return None
-    # Both x/y must be present; in the v2 SAPIENT location.proto, x=longitude or
-    # easting depending on coordinate_system, y=latitude or northing. For this
-    # converter we treat LAT_LNG_DEG_M (the most common over-the-wire choice
-    # for the ui's templates) as x=lat, y=lon — match what the
-    # template_loader uses.
-    if not loc.HasField("x") or not loc.HasField("y"):
-        return None
-    lat, lon = loc.x, loc.y
     alt = loc.z if loc.HasField("z") else 0.0
-    return lat, lon, alt
+    return loc.x, loc.y, alt
 
 
-# --- per-content converters -------------------------------------------------
-
-def cot_for_registration(message: _msg.SapientMessage, *,
-                         fallback_lat: float | None = None,
-                         fallback_lon: float | None = None,
-                         fallback_alt: float | None = None,
-                         stale_seconds: int = 300) -> bytes | None:
+def _registration_meta(message: _msg.SapientMessage) -> tuple[str, str, str]:
     r = message.registration
     node_type = (r.node_definition[0].node_type
                  if r.node_definition else _reg.Registration.NODE_TYPE_UNSPECIFIED)
-    cot_type = NODE_TYPE_TO_COT.get(node_type, "a-f-G-U")
+    cot_type = NODE_TYPE_TO_COT.get(node_type, NODE_DEFAULT_TYPE)
     callsign = r.short_name or r.name
     if not callsign and r.config_data:
         callsign = r.config_data[0].model
     if not callsign:
         callsign = f"node-{message.node_id[:8]}"
-    if fallback_lat is None or fallback_lon is None:
-        return None
-    return _build_cot(
-        uid=message.node_id, cot_type=cot_type,
-        lat=fallback_lat, lon=fallback_lon, hae=fallback_alt or 0.0,
-        callsign=callsign,
-        remarks=f"SAPIENT Registration · node_type={_reg.Registration.NodeType.Name(node_type)}",
-        stale_seconds=stale_seconds,
-    )
+    remarks = (f"SAPIENT Registration · node_type="
+               f"{_reg.Registration.NodeType.Name(node_type)}")
+    return cot_type, callsign, remarks
 
 
-def cot_for_status_report(message: _msg.SapientMessage, *,
-                          fallback_lat: float | None = None,
-                          fallback_lon: float | None = None,
-                          fallback_alt: float | None = None,
-                          stale_seconds: int = 300) -> bytes | None:
-    s = message.status_report
-    pos = _location_from(s.node_location) if s.HasField("node_location") else None
-    if pos is None and (fallback_lat is None or fallback_lon is None):
-        return None
-    lat, lon, alt = pos if pos is not None else (
-        fallback_lat, fallback_lon, fallback_alt or 0.0)
-    return _build_cot(
-        uid=message.node_id, cot_type="a-f-G-U",
-        lat=lat, lon=lon, hae=alt,
-        callsign=f"node-{message.node_id[:8]}",
-        remarks=f"SAPIENT StatusReport · system={s.System.Name(s.system)} mode={s.mode}",
-        stale_seconds=stale_seconds,
-    )
+# (loc_provider, uid_fn, meta_fn, stale_seconds)
+#   loc_provider: returns (lat, lon, alt) from message or None
+#   uid_fn:       returns CoT uid
+#   meta_fn:      returns (cot_type, callsign, remarks)
+_CONTENT_HANDLERS = {
+    "registration": (
+        lambda m: None,  # registration has no location of its own
+        lambda m: m.node_id,
+        _registration_meta,
+        300,
+    ),
+    "status_report": (
+        lambda m: _location_from(m.status_report.node_location)
+                  if m.status_report.HasField("node_location") else None,
+        lambda m: m.node_id,
+        lambda m: (
+            NODE_DEFAULT_TYPE,
+            f"node-{m.node_id[:8]}",
+            f"SAPIENT StatusReport · system="
+            f"{m.status_report.System.Name(m.status_report.system)} "
+            f"mode={m.status_report.mode}",
+        ),
+        300,
+    ),
+    "detection_report": (
+        lambda m: _location_from(m.detection_report.location)
+                  if m.detection_report.HasField("location") else None,
+        lambda m: f"det-{m.detection_report.object_id or m.detection_report.report_id}",
+        lambda m: (
+            DETECTION_DEFAULT_TYPE,
+            f"det-{(m.detection_report.object_id or m.detection_report.report_id)[:8]}",
+            f"SAPIENT DetectionReport · node={m.node_id[:8]} "
+            f"report={m.detection_report.report_id}",
+        ),
+        600,
+    ),
+    "alert": (
+        lambda m: _location_from(m.alert.location)
+                  if m.alert.HasField("location") else None,
+        lambda m: f"alert-{m.alert.alert_id}",
+        lambda m: (
+            ALERT_DEFAULT_TYPE,
+            f"alert-{m.alert.alert_id[:8]}",
+            f"SAPIENT Alert · {m.alert.description or 'alert'}",
+        ),
+        900,
+    ),
+}
 
-
-def cot_for_detection_report(message: _msg.SapientMessage, *,
-                             fallback_lat: float | None = None,
-                             fallback_lon: float | None = None,
-                             fallback_alt: float | None = None,
-                             stale_seconds: int = 600) -> bytes | None:
-    d = message.detection_report
-    pos = _location_from(d.location) if d.HasField("location") else None
-    if pos is None and (fallback_lat is None or fallback_lon is None):
-        return None
-    lat, lon, alt = pos if pos is not None else (
-        fallback_lat, fallback_lon, fallback_alt or 0.0)
-    return _build_cot(
-        uid=f"det-{d.object_id or d.report_id}",
-        cot_type=DETECTION_DEFAULT_TYPE,
-        lat=lat, lon=lon, hae=alt,
-        callsign=f"det-{(d.object_id or d.report_id)[:8]}",
-        remarks=f"SAPIENT DetectionReport · node={message.node_id[:8]} report={d.report_id}",
-        stale_seconds=stale_seconds,
-    )
-
-
-def cot_for_alert(message: _msg.SapientMessage, *,
-                  fallback_lat: float | None = None,
-                  fallback_lon: float | None = None,
-                  fallback_alt: float | None = None,
-                  stale_seconds: int = 900) -> bytes | None:
-    a = message.alert
-    pos = _location_from(a.location) if a.HasField("location") else None
-    if pos is None and (fallback_lat is None or fallback_lon is None):
-        return None
-    lat, lon, alt = pos if pos is not None else (
-        fallback_lat, fallback_lon, fallback_alt or 0.0)
-    return _build_cot(
-        uid=f"alert-{a.alert_id}", cot_type=ALERT_DEFAULT_TYPE,
-        lat=lat, lon=lon, hae=alt,
-        callsign=f"alert-{a.alert_id[:8]}",
-        remarks=f"SAPIENT Alert · {a.description or 'alert'}",
-        stale_seconds=stale_seconds,
-    )
-
-
-# --- single-entry dispatcher -----------------------------------------------
 
 def convert(message: _msg.SapientMessage, *,
             fallback_lat: float | None = None,
             fallback_lon: float | None = None,
             fallback_alt: float | None = None) -> bytes | None:
-    """Convert any supported SapientMessage to a CoT XML byte payload.
+    """Convert a SapientMessage to a CoT XML byte payload.
 
-    Returns None for content cases that don't map to a CoT marker (Task,
-    TaskAck, AlertAck, RegistrationAck, Error) or when no position is
-    available.
+    Returns None for content kinds that don't map to a CoT marker
+    (Task, TaskAck, AlertAck, RegistrationAck, Error) or when no
+    position is available.
     """
-    content = message.WhichOneof("content")
-    kw = dict(fallback_lat=fallback_lat, fallback_lon=fallback_lon,
-              fallback_alt=fallback_alt)
-    if content == "registration":
-        return cot_for_registration(message, **kw)
-    if content == "status_report":
-        return cot_for_status_report(message, **kw)
-    if content == "detection_report":
-        return cot_for_detection_report(message, **kw)
-    if content == "alert":
-        return cot_for_alert(message, **kw)
-    return None
+    handler = _CONTENT_HANDLERS.get(message.WhichOneof("content"))
+    if handler is None:
+        return None
+    loc_provider, uid_fn, meta_fn, stale_seconds = handler
+
+    pos = loc_provider(message)
+    if pos is None:
+        if fallback_lat is None or fallback_lon is None:
+            return None
+        pos = (fallback_lat, fallback_lon, fallback_alt or 0.0)
+
+    cot_type, callsign, remarks = meta_fn(message)
+    return _build_cot(
+        uid=uid_fn(message), cot_type=cot_type,
+        lat=pos[0], lon=pos[1], hae=pos[2],
+        callsign=callsign, remarks=remarks,
+        stale_seconds=stale_seconds,
+    )

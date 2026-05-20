@@ -1,7 +1,7 @@
 """Tests for the sapient-proto-to-msg generator.
 
 Two layers:
-  1. Pure-Python helpers in the script (config parsing, path resolution).
+  1. Pure-Python helpers in the script (default constants, path resolution).
   2. The generator's output — every message type from the v2 ICD has
      been emitted, is importable, and has the expected oneof shape.
 
@@ -22,22 +22,17 @@ import sapient_proto_to_msg as gen
 
 # ---------- pure-Python helpers ------------------------------------------
 
-def test_config_yaml_loads_required_keys():
-    """The shipping config.yaml must declare proto_dir, version, output_dir, lang."""
-    cfg = gen._load_config(Path("/opt/config.yaml"))
-    for key in ("proto_dir", "version", "output_dir", "lang"):
-        assert key in cfg, f"missing key in config.yaml: {key}"
+def test_default_version_is_v2():
+    """v2 is the active ICD; the shipping default must target it."""
+    assert gen.DEFAULT_VERSION == "bsi_flex_335_v2_0"
 
 
-def test_config_default_version_is_v2():
-    """v2 is the active ICD; the shipping config must default to it."""
-    cfg = gen._load_config(Path("/opt/config.yaml"))
-    assert cfg["version"] == "bsi_flex_335_v2_0"
+def test_default_lang_is_python():
+    assert gen.DEFAULT_LANG == "python"
 
 
-def test_config_default_lang_is_python():
-    cfg = gen._load_config(Path("/opt/config.yaml"))
-    assert cfg["lang"] == "python"
+def test_default_proto_dir_points_at_dstl():
+    assert gen.DEFAULT_PROTO_DIR.endswith("SAPIENT-Proto-Files")
 
 
 def test_resolve_absolute_path_unchanged(tmp_path):
@@ -111,9 +106,9 @@ def test_sapient_message_oneof_contains_every_content_case():
 
 
 def test_v1_artifacts_not_shipped_by_default():
-    """Default config targets v2 only — v1 bindings should be absent."""
+    """Default targets v2 only — v1 bindings should be absent."""
     assert not Path("/opt/sapient_msg/bsi_flex_335_v1_0").exists(), (
-        "v1 directory present; config.yaml is supposed to default to v2 only"
+        "v1 directory present; DEFAULT_VERSION is supposed to be v2 only"
     )
 
 

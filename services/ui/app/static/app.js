@@ -129,12 +129,13 @@ function setMode(newMode) {
   mode = newMode;
   $("#mode-single").classList.toggle("active", mode === "single");
   $("#mode-flow").classList.toggle("active", mode === "flow");
-  // Editor (#single-pane) stays visible in both modes so users can preview
-  // and edit message bodies. Send is single-only; Run flow / Clear belong
-  // to flow-pane.
   $("#single-pane").hidden = false;
   $("#flow-pane").hidden = mode !== "flow";
-  $("#send").hidden = mode === "flow";
+  // Action buttons live in the tabs row; swap which mode's buttons are
+  // visible. .single-only ⇒ shown only in single mode; .flow-only ⇒ shown
+  // only in flow mode; un-classed buttons (Validate, Reset) show in both.
+  document.querySelectorAll(".single-only").forEach((b) => b.hidden = mode !== "single");
+  document.querySelectorAll(".flow-only").forEach((b)   => b.hidden = mode !== "flow");
   document.querySelectorAll("#template-list li").forEach((li) => {
     li.title = mode === "flow"
       ? "click to load into the editor AND append as the next flow step"
@@ -1537,17 +1538,6 @@ function init() {
   $("#mode-flow").addEventListener("click", () => setMode("flow"));
   $("#run-flow").addEventListener("click", runFlow);
   $("#clear-flow").addEventListener("click", () => { flowSteps = []; renderFlow(); });
-  $("#preset-reg-status").addEventListener("click", () => {
-    flowSteps = [];
-    addFlowStep("registration");
-    addFlowStep("status_report");
-  });
-  $("#preset-reg-status-det").addEventListener("click", () => {
-    flowSteps = [];
-    addFlowStep("registration");
-    addFlowStep("status_report");
-    addFlowStep("detection_report");
-  });
   renderFlow();
   ["node-id","recv-timeout","drain-after"].forEach((id) => {
     $("#" + id).addEventListener("change", saveEndpoint);

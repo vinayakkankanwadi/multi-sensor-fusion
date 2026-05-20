@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>msf-ui — SAPIENT BSI Flex 335 v2</title>
-<link rel="stylesheet" href="/static/style.css?v=44">
+<link rel="stylesheet" href="/static/style.css?v=46">
 </head>
 <body>
 <header>
@@ -96,30 +96,32 @@
       <div class="row mode-tabs">
         <button id="mode-single" class="tab active">Single message</button>
         <button id="mode-flow" class="tab">Flow</button>
+        <span class="mode-actions-gap"></span>
+        <button id="send"             class="mode-action single-only" disabled>Send</button>
+        <button id="run-flow"         class="mode-action flow-only"   disabled hidden>Run flow</button>
+        <button id="validate-only"    class="mode-action"             disabled>Validate</button>
+        <button id="reload-template"  class="mode-action"             disabled
+                title="Reset the editor to the template's .json on disk, discarding any edits you've made.">Reset</button>
+        <button id="clear-flow"       class="mode-action flow-only" hidden>Clear</button>
+        <span id="send-status" class="muted small"></span>
+        <span id="flow-status" class="muted small"></span>
+        <details class="info-tip">
+          <summary aria-label="Available placeholders"></summary>
+          <div class="info-body">
+            <b>Placeholders:</b>
+            <ul>
+              <li><code>{{NOW}}</code> — current UTC RFC3339 timestamp</li>
+              <li><code>{{ULID}}</code> — fresh ULID per occurrence</li>
+              <li><code>{{NODE_ID}}</code> — the Node UUID from the top bar</li>
+              <li><code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code> — latest NMEA fix from msf-gps</li>
+            </ul>
+          </div>
+        </details>
         <span id="editor-title" class="muted"></span>
       </div>
 
       <div id="single-pane">
         <textarea id="editor" spellcheck="false" placeholder="Pick a template on the left..."></textarea>
-        <div class="row">
-          <button id="send" disabled>Send</button>
-          <button id="validate-only" disabled>Validate only</button>
-          <button id="reload-template" disabled
-                  title="Reset the editor to the template's .json on disk, discarding any edits you've made.">Reset</button>
-          <details class="info-tip">
-            <summary aria-label="Available placeholders"></summary>
-            <div class="info-body">
-              <b>Placeholders:</b>
-              <ul>
-                <li><code>{{NOW}}</code> — current UTC RFC3339 timestamp</li>
-                <li><code>{{ULID}}</code> — fresh ULID per occurrence</li>
-                <li><code>{{NODE_ID}}</code> — the Node UUID from the top bar</li>
-                <li><code>{{GPS_LAT}}</code>, <code>{{GPS_LON}}</code>, <code>{{GPS_ALT}}</code> — latest NMEA fix from msf-gps</li>
-              </ul>
-            </div>
-          </details>
-          <span id="send-status" class="muted"></span>
-        </div>
       </div>
 
       <div id="flow-pane" hidden>
@@ -130,8 +132,8 @@
               All steps share a <b>single TCP connection</b> to the selected
               middleware. Put <em>Registration</em> first if any later step
               depends on the ASM being registered (StatusReport, DetectionReport,
-              etc). Click a template in the sidebar to append it as a step;
-              use the ↑ / ↓ controls in the table to reorder.
+              etc). <b>Click a template in the sidebar</b> to append it as a
+              step; use the ↑ / ↓ controls in the table to reorder.
             </div>
           </details>
         </h3>
@@ -139,14 +141,7 @@
           <thead><tr><th>#</th><th>template</th><th>wait_for</th><th>recv (s)</th><th>drain (s)</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
-        <div id="flow-empty" class="muted small">Click a template on the left to add it as a step.</div>
-        <div class="row">
-          <button id="run-flow" disabled>Run flow</button>
-          <button id="clear-flow">Clear</button>
-          <button id="preset-reg-status" class="ghost" title="Add Registration → StatusReport">+ register&amp;status</button>
-          <button id="preset-reg-status-det" class="ghost" title="Add Registration → StatusReport → DetectionReport">+ register&amp;status&amp;detect</button>
-          <span id="flow-status" class="muted"></span>
-        </div>
+        <div id="flow-empty" class="muted small" hidden></div>
       </div>
     </section>
 
@@ -290,6 +285,6 @@
   </form>
 </div>
 
-<script src="/static/app.js?v=44"></script>
+<script src="/static/app.js?v=46"></script>
 </body>
 </html>

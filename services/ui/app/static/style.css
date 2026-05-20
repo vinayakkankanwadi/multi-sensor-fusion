@@ -706,7 +706,9 @@ section h3 { margin-top: 16px; }
 #recent-runs tr:hover td { background: #161b22; cursor: pointer; }
 #recent-runs .content { color: #d2a8ff; }
 
-.mode-tabs { gap: 4px; margin-bottom: 6px; }
+.mode-tabs { gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.mode-tabs .mode-actions-gap { flex: 1 1 8px; min-width: 8px; }
+.mode-tabs .mode-action { padding: 3px 10px; font-size: 13px; }
 button.tab {
   background: transparent;
   border: 1px solid #30363d;

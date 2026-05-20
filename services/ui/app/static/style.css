@@ -649,7 +649,7 @@ section h3 { margin-top: 16px; }
    textarea takes whatever space is left. */
 #editor-pane          { display: flex; flex-direction: column; min-height: 0; }
 #single-pane,
-#flow-pane            { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#flow-pane            { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
 #single-pane > .row,
 #flow-pane > .row     { flex: 0 0 auto; margin-top: 6px; }
 #single-pane > p,

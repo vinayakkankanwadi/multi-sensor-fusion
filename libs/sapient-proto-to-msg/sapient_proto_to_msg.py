@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """sapient-proto-to-msg — generate the sapient_msg/ package from .proto sources.
 
-Runs protoc inside an ephemeral docker container so no host install is
-required. Output is gitignored: re-run whenever the proto sources change.
+Runs `grpc_tools.protoc` directly. Caller must have `grpcio-tools`
+installed (the proto-gen Dockerfile in this directory does that;
+locally: `pip install 'grpcio-tools>=1.60,<1.63' 'protobuf>=4.25,<5'`).
+Output is gitignored: re-run whenever the proto sources change.
 
     python sapient_proto_to_msg.py
     python sapient_proto_to_msg.py --version bsi_flex_335_v1_0
@@ -18,9 +20,6 @@ import sys
 from pathlib import Path
 
 TARGETS = {"python": "--python_out=."}
-
-PROTOC_IMAGE = "python:3.12-slim"
-PROTOC_PIP_DEPS = "'setuptools<70' 'grpcio-tools>=1.60,<1.63' 'protobuf>=4.25,<5'"
 
 PACKAGE = "sapient_msg"
 
@@ -64,17 +63,10 @@ def generate(*, proto_dir: Path, output_dir: Path, version: str, lang: str) -> P
         f"{PACKAGE}/{version}/{p.name}" for p in sorted(version_dir.glob("*.proto"))
     )
 
-    protoc_cmd = (
-        f"pip install --quiet {PROTOC_PIP_DEPS} && "
-        f"python -m grpc_tools.protoc --proto_path=. {TARGETS[lang]} "
-        + " ".join(sources)
-    )
     subprocess.run(
-        ["docker", "run", "--rm",
-         "-v", f"{stage_root}:/stage",
-         "-w", "/stage",
-         PROTOC_IMAGE,
-         "sh", "-c", protoc_cmd],
+        [sys.executable, "-m", "grpc_tools.protoc",
+         "--proto_path=.", TARGETS[lang], *sources],
+        cwd=stage_root,
         check=True,
     )
 

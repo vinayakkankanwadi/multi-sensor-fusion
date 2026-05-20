@@ -21,13 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# sapient-proto-to-msg is a special case: not a pip-installable lib, so
-# we COPY both its output (sapient_msg/, used by every consumer) and its
-# script (so test_generator.py can import the script's helpers and
-# verify the shipping defaults). Everything lives under /opt — on
+# sapient-proto-to-msg's output and script come from the build-only
+# `proto-gen` compose service. We COPY the generated `sapient_msg/`
+# (used by every consumer test) and the script itself (so the generator
+# tests can import its constants). Everything lives under /opt — on
 # PYTHONPATH — so the libs COPY below doesn't shadow them.
-COPY --from=sapient-proto-to-msg sapient_msg              /opt/sapient_msg
-COPY --from=sapient-proto-to-msg sapient_proto_to_msg.py  /opt/sapient_proto_to_msg.py
+COPY --from=sapient-proto-to-msg /work/sapient_msg              /opt/sapient_msg
+COPY --from=sapient-proto-to-msg /work/sapient_proto_to_msg.py  /opt/sapient_proto_to_msg.py
 
 # Pip-installable libraries — discovered by wildcard (a lib without a
 # pyproject.toml, like sapient-proto-to-msg, gets skipped here on purpose).

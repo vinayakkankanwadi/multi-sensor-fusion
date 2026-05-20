@@ -8,8 +8,7 @@ services that surround it.
 ## Run it
 
 ```bash
-./scripts/build.sh        # regenerate proto bindings + docker compose build
-docker compose up -d      # start every service
+docker compose up -d --build      # builds proto-gen + every service, then starts them
 ```
 
 Then open <http://localhost:8080> for the UI (Nodes / Services / Message

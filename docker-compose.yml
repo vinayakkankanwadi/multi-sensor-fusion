@@ -20,16 +20,15 @@
 #                  HTTP /health + /stats :8092, UDP-sends CoT to TAK.
 #
 # Libraries (libs/<lib>/) are pip-installed into each service that
-# declares them as additional_contexts. The SAPIENT proto bindings are
-# generated on demand into libs/sapient-proto-to-msg/sapient_msg/ via
-#   python libs/sapient-proto-to-msg/sapient_proto_to_msg.py
-# (also wired into scripts/build.sh). They're not a pip package — each
-# consumer COPYs sapient_msg/ directly. No special compose service for
-# proto generation.
+# declares them as additional_contexts. The SAPIENT proto bindings come
+# from the `proto-gen` service below — a build-only image that runs
+# `sapient_proto_to_msg.py` during its build, producing the `sapient_msg/`
+# tree at /work/sapient_msg/. Each consumer references it via
+# `additional_contexts: sapient-proto-to-msg: service:proto-gen` and
+# COPYs the result. No host-side codegen step.
 #
 # Run from this directory:
-#   docker compose build
-#   docker compose up -d
+#   docker compose up -d --build       # builds proto-gen + everything else
 #   docker compose down
 #
 # Tests are part of the stack — `regression` is a long-running HTTP
@@ -45,12 +44,32 @@ name: multi-sensor-fusion
 
 services:
 
+  # Build-time only: protoc-compiles dstl/SAPIENT-Proto-Files into a
+  # sapient_msg/ package at /work/sapient_msg/. Every consumer service
+  # references this image via `additional_contexts: sapient-proto-to-msg:
+  # service:proto-gen` and `COPY --from=`, so the codegen runs as part
+  # of `docker compose build` with no host-side step.
+  #
+  # `command: ["true"]` + `restart: "no"` means that if you `docker
+  # compose up` the container, it exits 0 immediately. The work happens
+  # in the image build; this entry exists only so consumers can use the
+  # `service:` reference.
+  proto-gen:
+    build:
+      context: ./libs/sapient-proto-to-msg
+      dockerfile: Dockerfile
+      additional_contexts:
+        proto-sources: ./dstl/SAPIENT-Proto-Files
+    image: msf/proto-gen:latest
+    command: ["true"]
+    restart: "no"
+
   ui:
     build:
       context: ./services/ui
       dockerfile: Dockerfile
       additional_contexts:
-        sapient-proto-to-msg: ./libs/sapient-proto-to-msg
+        sapient-proto-to-msg: service:proto-gen
         sapient-encode-decode-msg: ./libs/sapient-encode-decode-msg
     image: ui:latest
     container_name: ui
@@ -282,7 +301,7 @@ services:
       context: ./services/cot-bridge
       dockerfile: Dockerfile
       additional_contexts:
-        sapient-proto-to-msg: ./libs/sapient-proto-to-msg
+        sapient-proto-to-msg: service:proto-gen
         sapient-encode-decode-msg: ./libs/sapient-encode-decode-msg
         sapient-msg-to-cot:   ./libs/sapient-msg-to-cot
     image: cot-bridge:latest
@@ -318,10 +337,10 @@ services:
         # pip-installable lib does not require editing this file or
         # the Dockerfile.
         libs-root:            ./libs
-        # sapient-proto-to-msg has no pyproject.toml — its output folder
-        # (sapient_msg/) is generated on demand and COPYed onto
-        # PYTHONPATH directly, same as any consuming service.
-        sapient-proto-to-msg: ./libs/sapient-proto-to-msg
+        # sapient-proto-to-msg has no pyproject.toml — the proto-gen
+        # build-only service produces its `sapient_msg/` output, which
+        # this image COPYs onto PYTHONPATH.
+        sapient-proto-to-msg: service:proto-gen
     image: regression:latest
     container_name: regression
     network_mode: host

@@ -69,8 +69,7 @@ The `regression` service in compose is the runner. Profile-gated so it
 doesn't come up on `docker compose up -d`.
 
 ```bash
-./scripts/build.sh                          # regen proto bindings + build all images
-docker compose up -d                        # bring up the stack
+docker compose up -d --build                # builds proto-gen + every image, then starts the stack
 docker compose run --rm regression          # full suite (libs + services), ~31s
 ```
 

@@ -501,7 +501,6 @@ multi-sensor-fusion/
 ├── Architecture.md                  this document
 ├── README.md                        orientation + run instructions
 ├── docker-compose.yml               every runnable component (services + libs + regression runner)
-├── scripts/build.sh                 regen proto bindings + docker compose build
 ├── services/                        runtime containers (one folder per docker-compose service)
 │   ├── ui/                          FastAPI SPA; SAPIENT v2 sender + Tests drawer
 │   ├── apex/                        vendored Apex SAPIENT middleware wrapper

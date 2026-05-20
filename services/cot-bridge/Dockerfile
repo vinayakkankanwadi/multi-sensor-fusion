@@ -9,11 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Generated SAPIENT proto bindings — COPY the package directly (no pip
-# install; this lib has no pyproject.toml because its output is just a
-# folder you generate on demand). Regenerate with:
-#   python libs/sapient-proto-to-msg/sapient_proto_to_msg.py
-COPY --from=sapient-proto-to-msg sapient_msg /app/sapient_msg
+# Generated SAPIENT proto bindings come from the build-only `proto-gen`
+# compose service. No host-side codegen step.
+COPY --from=sapient-proto-to-msg /work/sapient_msg /app/sapient_msg
 
 # Python libs (proper pip packages).
 COPY --from=sapient-encode-decode-msg   . /tmp/_pkg/sapient-encode-decode-msg/
